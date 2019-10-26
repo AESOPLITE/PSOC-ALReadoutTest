@@ -84,7 +84,7 @@ volatile uint8 timeoutDrdy = FALSE;
 volatile uint8 lastDrdyCap = 0u;
 #define MIN_DRDY_CYCLES 8
  
-const uint8 frameSync[2] = {0x55u, 0xAAu};
+const uint8 frameSync[2] = {0x55u, 0xABu};
 uint32 frameCnt = 0u;
 
 typedef struct PacketLocation {
@@ -252,91 +252,116 @@ CY_ISR(ISRDrdyCap)
 
 CY_ISR(ISRHRTx)
 {
-	uint8 intState = CyEnterCriticalSection();
-	UART_HR_Data_PutArray((uint8 *)frameCnt, 3);
-	uint8 tempStatus = UART_HR_Data_ReadTxStatus();
-	uint8 buffFrame[34];
-	uint8 ibuffFrame = 0;
-	uint8 nullFrame = FALSE;
-	uint8 nDataBytesLeft = 27;
-	memcpy( (buffFrame + ibuffFrame), &(frameCnt), 3);
-	ibuffFrame += 3;
-	frameCnt++;
-	memcpy( (buffFrame + ibuffFrame), frameSync, 2);
-	ibuffFrame += 2;
-	memcpy( (buffFrame + ibuffFrame), frameSync, 2);
-	ibuffFrame += 2;
-	if (packetFIFOHead == packetFIFOTail)
+
+	uint8 tempStatus;// = UART_HR_Data_ReadTxStatus();
+//	uint8 intState = CyEnterCriticalSection();
+//	UART_HR_Data_PutArray(buffSPIWrite, 34);
+//	isr_HR_Disable();
+//	if (UART_HR_Data_GetTxBufferSize() <= 1) for(uint8 x=0;x<34;x++) UART_HR_Data_PutChar(x);
+//	tempStatus = UART_HR_Data_ReadTxStatus();
+//	isr_HR_ClearPending();
+//	isr_HR_Enable();
+	
+	if (UART_HR_Data_GetTxBufferSize() <= 1)
 	{
-		nullFrame = TRUE;
-	}
-	else
-	{
-		uint8 curSPIDev = packetFIFO[packetFIFOHead].index;;
-		uint8 nBytes;
-		uint8 curEOR= packetFIFO[packetFIFOHead].EOR;
-		uint8 curRead = buffSPIRead[curSPIDev];
-		while((packetFIFOHead != packetFIFOTail) && (nDataBytesLeft > 0))
+//	if (FALSE !=((UART_HR_Data_TX_STS_FIFO_EMPTY | UART_HR_Data_TX_STS_COMPLETE) & tempStatus))
+//	{
+//		UART_HR_Data_PutArray((uint8 *)(&frameCnt), 3); //little endian, need big endian
+		
+		uint8 buffFrame[34];
+		uint8 ibuffFrame = 0;
+		
+		for (int i = 2; i >= 0; i--)
 		{
-			if (curEOR >= curRead)
+			buffFrame[ibuffFrame] = *((uint8*)(((uint8*) &frameCnt) + i)); //this converts to big endian 3 byte counter
+			UART_HR_Data_PutChar(buffFrame[ibuffFrame]);
+			ibuffFrame++;
+		}
+		uint8 nullFrame = FALSE;
+		uint8 nDataBytesLeft = 27;
+//		memcpy( (buffFrame + ibuffFrame), &(frameCnt), 3);
+//		ibuffFrame += 3;
+		frameCnt++;
+		memcpy( (buffFrame + ibuffFrame), frameSync, 2);
+		ibuffFrame += 2;
+		memcpy( (buffFrame + ibuffFrame), frameSync, 2);
+		ibuffFrame += 2;
+		if (packetFIFOHead == packetFIFOTail)
+		{
+			nullFrame = TRUE;
+		}
+		else
+		{
+			uint8 curSPIDev = packetFIFO[packetFIFOHead].index;;
+			uint8 nBytes;
+			uint8 curEOR= packetFIFO[packetFIFOHead].EOR;
+			uint8 curRead = buffSPIRead[curSPIDev];
+			while((packetFIFOHead != packetFIFOTail) && (nDataBytesLeft > 0))
 			{
-				nBytes = MIN((curEOR + 1) - curRead, nDataBytesLeft);
-			}
-			else
-			{
-				nBytes = MIN(SPI_BUFFER_SIZE - curRead, nDataBytesLeft);
-			}
-			memcpy( (buffFrame + ibuffFrame), &(frameCnt), nBytes);
-			ibuffFrame += nBytes;
-			nDataBytesLeft -= nBytes;
-			curRead += nBytes;
-			if ((curRead - 1)== curEOR)
-			{
-				buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
-				packetFIFOHead = WRAPINC(packetFIFOHead, NUM_SPI_DEV);
-				if (packetFIFOHead != packetFIFOTail) 
+				if (curEOR >= curRead)
 				{
-					curSPIDev = packetFIFO[packetFIFOHead].index;
-					curEOR = packetFIFO[packetFIFOHead].EOR;
-					curRead = buffSPIRead[curSPIDev];
+					nBytes = MIN((curEOR + 1) - curRead, nDataBytesLeft);
+				}
+				else
+				{
+					nBytes = MIN(SPI_BUFFER_SIZE - curRead, nDataBytesLeft);
+				}
+				memcpy( (buffFrame + ibuffFrame), &(frameCnt), nBytes);
+				ibuffFrame += nBytes;
+				nDataBytesLeft -= nBytes;
+				curRead += nBytes;
+				if ((curRead - 1)== curEOR)
+				{
+					buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
+					packetFIFOHead = WRAPINC(packetFIFOHead, NUM_SPI_DEV);
+					if (packetFIFOHead != packetFIFOTail) 
+					{
+						curSPIDev = packetFIFO[packetFIFOHead].index;
+						curEOR = packetFIFO[packetFIFOHead].EOR;
+						curRead = buffSPIRead[curSPIDev];
+					}
+				}
+				else if (curRead >= SPI_BUFFER_SIZE)
+				{
+					curRead = 0;
+				}
+				else
+				{
+					buffSPIRead[curSPIDev] = curRead;
 				}
 			}
-			else if (curRead >= SPI_BUFFER_SIZE)
-			{
-				curRead = 0;
-			}
-			else
-			{
-				buffSPIRead[curSPIDev] = curRead;
-			}
 		}
-	}
-	while (nDataBytesLeft > 0)
-	{
-		buffFrame[ibuffFrame++] = NULL_HEAD;
-		nDataBytesLeft--;
-		if (1 < nDataBytesLeft)
+		while (nDataBytesLeft > 0)
 		{
-			memcpy( (buffFrame + ibuffFrame), frameSync, 2);
-			ibuffFrame += 2;
-			nDataBytesLeft -= 2;
-		}
-		else //TODO this is an alignment error
-		{
-			if (1 == nDataBytesLeft)
+			buffFrame[ibuffFrame] = NULL_HEAD;
+//			UART_HR_Data_PutChar(NULL_HEAD);
+			ibuffFrame++;
+			nDataBytesLeft--;
+			if (nDataBytesLeft > 1)
 			{
-				buffFrame[ibuffFrame++] = NULL_HEAD;
-				nDataBytesLeft--;
+				memcpy( &(buffFrame[ibuffFrame]), frame00FF, 2);
+				ibuffFrame += 2;
+				nDataBytesLeft -= 2;
+			}
+			else //TODO this is an alignment error
+			{
+				if (1 == nDataBytesLeft)
+				{
+					buffFrame[ibuffFrame] = NULL_HEAD;
+					ibuffFrame++;
+					nDataBytesLeft--;
+				}
 			}
 		}
+		UART_HR_Data_PutArray((uint8 *)(buffFrame + 3), 31); //already sent the 3 byte counter, send rest of frame
+		if (TRUE != nullFrame)
+		{
+			memcpy((buffUsbTx + iBuffUsbTx), buffFrame, 34);
+			iBuffUsbTx += 34;
+		}
 	}
-	UART_HR_Data_PutArray((buffFrame + 3), 31);
-	if (TRUE != nullFrame)
-	{
-		memcpy((buffUsbTx + iBuffUsbTx), buffFrame, 34);
-		iBuffUsbTx += 34;
-	}
-	CyExitCriticalSection(intState);
+	tempStatus = UART_HR_Data_ReadTxStatus();
+//	CyExitCriticalSection(intState);
 }
 
 int main(void)
@@ -373,17 +398,18 @@ int main(void)
 	SPIM_BP_ClearFIFO();
 	USBUART_CD_Start(USBFS_DEVICE, USBUART_CD_5V_OPERATION);
 	UART_Cmd_Start();
+	UART_HR_Data_Start();
    
 		   /* Service USB CDC when device is configured. */
-	if ((0u != USBUART_CD_GetConfiguration()) && (iBuffUsbTx > 0))
-	{
-
-		/* Wait until component is ready to send data to host. */
-		if (USBUART_CD_CDCIsReady())
-		{
-			USBUART_CD_PutChar('S'); //TODO  different or eliminate startup message
-		}
-	}
+//	if ((0u != USBUART_CD_GetConfiguration()) && (iBuffUsbTx > 0))
+//	{
+//
+//		/* Wait until component is ready to send data to host. */
+//		if (USBUART_CD_CDCIsReady())
+//		{
+//			USBUART_CD_PutChar('S'); //TODO  different or eliminate startup message
+//		}
+//	}
 	lastDrdyCap = Timer_Drdy_ReadPeriod();
 	
 	Control_Reg_R_Write(0x00u);
@@ -397,6 +423,8 @@ int main(void)
 	isr_W_StartEx(ISRWriteSPI);
 	isr_C_StartEx(ISRDrdyCap);
 	
+	
+	
 	Timer_Tsync_Start();
 //	Timer_SelLow_Start();
 	Timer_Drdy_Start();
@@ -408,10 +436,10 @@ int main(void)
 //	SPIM_BP_WriteTxData(cmdBuff[0]);
 //	iCmdBuff = 1;
 	SPIM_BP_TxDisable();
-	
+//	for(uint8 x=0;x<34;x++) UART_HR_Data_PutChar(x);
 	CyGlobalIntEnable; /* Enable global interrupts. */
-	
-   
+//	ISRHRTx();
+	isr_HR_StartEx(ISRHRTx);
 	
 	
 	for(;;)

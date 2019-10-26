@@ -3472,6 +3472,11 @@
         <Data key="Port Format" value="2,6" />
       </Group>
     </Group>
+    <Group key="aba166a4-19f9-44be-8b89-2e95ac08202e">
+      <Group key="0">
+        <Data key="Port Format" value="3,0" />
+      </Group>
+    </Group>
     <Group key="b4cbf60d-4f82-4fca-b8d1-7620aea0c90f">
       <Group key="0">
         <Data key="Port Format" value="2,4" />
@@ -3510,9 +3515,6 @@
     <Group key="UnAssigned Pins">
       <Group key="95673c29-4c0b-43f8-86ec-47a101973e8d">
         <Data key="0" value="132164032030664693" />
-      </Group>
-      <Group key="aba166a4-19f9-44be-8b89-2e95ac08202e">
-        <Data key="0" value="132164030575604658" />
       </Group>
       <Group key="fd873ef1-0b0d-43b2-8667-7fda7a28e573">
         <Data key="0" value="132164031351044647" />
