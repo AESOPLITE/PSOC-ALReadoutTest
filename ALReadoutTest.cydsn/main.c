@@ -49,8 +49,8 @@
 /* The buffer size is equal to the maximum packet size of the IN and OUT bulk
 * endpoints.
 */
-#define USBUART_BUFFER_SIZE (64u)
-#define LINE_STR_LENGTH	 (20u)
+#define USBUART_BUFFER_SIZE	(64u)
+#define LINE_STR_LENGTH	(20u)
 
 #define NUM_SPI_DEV	(5u)
 uint8 iSPIDev = 0u;
@@ -77,8 +77,8 @@ uint8 buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
 uint8 buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
-#define COMMAND_CHARS	 (4u)
-uint8 curCmd[COMMAND_CHARS];
+#define COMMAND_CHARS	(4u)
+uint8 curCmd[COMMAND_CHARS+1]; //one extra char for null
 uint8 iCurCmd = 0u;
 volatile uint8 timeoutDrdy = FALSE;
 volatile uint8 lastDrdyCap = 0u;
@@ -92,13 +92,86 @@ typedef struct PacketLocation {
 	uint8 header;
 	uint8 EOR;
 } PacketLocation;
-PacketLocation packetFIFO[NUM_SPI_DEV];
+
+#define PACKET_FIFO_SIZE	 (4u * NUM_SPI_DEV)
+PacketLocation packetFIFO[PACKET_FIFO_SIZE];
 uint8 packetFIFOHead = 0u;
 uint8 packetFIFOTail = 0u;
 
 
 //const uint8 continueReadFlags = (SPIM_BP_STS_SPI_IDLE | SPIM_BP_STS_TX_FIFO_EMPTY);
 //volatile uint8 continueRead = FALSE;
+
+
+//;AESOPLite Initialization Commands
+//HiVol	FDB	$A735  ;T1 1431.6 High Voltage
+//	FDB	$DD36  ;T2 1860.7
+//	FDB	$CA37  ;T3 1704.7
+//	FDB	$B9B5  ;T4 1553.3
+//	FDB	$CB74  ;G  1706.8
+//DiscP	FDB	$0039  ;Dual PHA card 0, All PHA Discriminators set to 7.0
+//	FDB	$073A  ;T1
+//	FDB	$0039  ;Dual PHA card 0
+//	FDB	$0778  ;T2
+//	FDB	$0139  ;Dual PHA card 1
+//	FDB	$073A  ;T3
+//	FDB	$0139  ;Dual PHA card 1
+//	FDB	$0778  ;T4
+//	FDB	$0239  ;Dual PHA card 2
+//	FDB	$073A  ;G	
+//	FDB	$0239  ;Dual PHA card 2
+//	FDB	$0778  ;No Input
+//DiscL	FDB	$0039  ;Dual PHA card 0, All Logic Discriminators set to 7.0
+//	FDB	$073B  ;T1
+//	FDB	$0039  ;Dual PHA card 0
+//	FDB	$0779  ;T2
+//	FDB	$0139  ;Dual PHA card 1
+//	FDB	$073B  ;T3
+//	FDB	$0139  ;Dual PHA card 1
+//	FDB	$0779  ;T4
+//	FDB	$0239  ;Dual PHA card 2
+//	FDB	$073B  ;G
+//	FDB	$0239  ;Dual PHA card 2
+//	FDB	$0779  ;No Input
+//Coinc	FDB	$F838  ;T1 T2 T3 Coincidence
+//	FDB	$0AB7  ;10sec counter R/O
+//	FDB	$0AB6  ;10sec Power R/O
+
+//AESOPLite Initialization Commands
+#define NUMBER_INIT_CMDS	32
+uint8 initCmd[NUMBER_INIT_CMDS][2] = {
+	{0xA7, 0x35}, //T1 1431.6 High Voltage
+	{0xDD, 0x36}, //T2 1860.7
+	{0xCA, 0x37}, //T3 1704.7
+	{0xB9, 0xB5}, //T4 1553.3
+	{0xCB, 0x74}, //G  1706.8
+	{0x00, 0x39}, //Dual PHA card 0, All PHA Discriminators set to 7.0
+	{0x07, 0x3A}, //T1
+	{0x00, 0x39}, //Dual PHA card 0
+	{0x07, 0x78}, //T2
+	{0x01, 0x39}, //Dual PHA card 1
+	{0x07, 0x3A}, //T3
+	{0x01, 0x39}, //Dual PHA card 1
+	{0x07, 0x78}, //T4
+	{0x02, 0x39}, //Dual PHA card 2
+	{0x07, 0x3A}, //G	
+	{0x02, 0x39}, //Dual PHA card 2
+	{0x07, 0x78}, //No Input
+	{0x00, 0x39}, //Dual PHA card 0, All Logic Discriminators set to 7.0
+	{0x07, 0x3B}, //T1
+	{0x00, 0x39}, //Dual PHA card 0
+	{0x07, 0x79}, //T2
+	{0x01, 0x39}, //Dual PHA card 1
+	{0x07, 0x3B}, //T3
+	{0x01, 0x39}, //Dual PHA card 1
+	{0x07, 0x79}, //T4
+	{0x02, 0x39}, //Dual PHA card 2
+	{0x07, 0x3B}, //G
+	{0x02, 0x39}, //Dual PHA card 2
+	{0x07, 0x79}, //No Input
+	{0xF8, 0x38}, //T1 T2 T3 Coincidence
+	{0x0A, 0xB7}, //10sec counter R/O
+	{0x0A, 0xB6} }; //10sec Power R/O
 
 typedef struct BaroCoeff {
 	const double U0;
@@ -142,6 +215,30 @@ double BaroPresCalc ( double Tao, double U, const BaroCoEff * bce )
 	return ((C * ratio) * (1 - (D * ratio)));
 }
 
+int SendCmdString (uint8 * in)
+{
+	if (0 != UART_Cmd_GetTxBufferSize()) return -1; // Not ready to send 
+	sprintf((char *)curCmd, "%x%x", (char)(*in), (char)*(in+1));
+	for (uint8 x=0; x<3; x++)
+	{
+		UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
+		UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
+		UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
+	}
+	//Unix style line end
+	UART_Cmd_PutChar(CR);
+	UART_Cmd_PutChar(LF);
+	return 0;
+}
+
+void SendInitCmds()
+{
+	int i = 0;
+	while (i < NUMBER_INIT_CMDS)
+	{
+		if (0 != SendCmdString(initCmd[i])) i++;
+	}
+}
 uint8 buffUsbTx[SPI_BUFFER_SIZE];
 uint8 iBuffUsbTx = 0;
 
@@ -313,7 +410,7 @@ CY_ISR(ISRHRTx)
 				if ((curRead - 1)== curEOR)
 				{
 					buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
-					packetFIFOHead = WRAPINC(packetFIFOHead, NUM_SPI_DEV);
+					packetFIFOHead = WRAPINC(packetFIFOHead, PACKET_FIFO_SIZE);
 					if (packetFIFOHead != packetFIFOTail) 
 					{
 						curSPIDev = packetFIFO[packetFIFOHead].index;
@@ -441,6 +538,7 @@ int main(void)
 //	ISRHRTx();
 	isr_HR_StartEx(ISRHRTx);
 	
+	SendInitCmds();
 	
 	for(;;)
 	{
@@ -695,7 +793,15 @@ int main(void)
 						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
 						packetFIFO[packetFIFOTail].index = iSPIDev;
 						packetFIFO[packetFIFOTail].EOR = tempBuffWrite;
-						WRAPINC(packetFIFOTail, NUM_SPI_DEV);
+						WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
+						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
+						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
+						buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
+						buffUsbTxDebug[iBuffUsbTxDebug++] = buffSPICurHead[iSPIDev];
+						buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
+						buffUsbTxDebug[iBuffUsbTxDebug++] = tempBuffWrite;
+						buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
+						
 						
 						
 //						buffSPI[iSPIDev][tempBuffWrite] = 0x00;
