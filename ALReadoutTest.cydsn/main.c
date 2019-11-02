@@ -236,11 +236,13 @@ void SendInitCmds()
 	int i = 0;
 	while (i < NUMBER_INIT_CMDS)
 	{
-		if (0 != SendCmdString(initCmd[i])) i++;
+		if (0 == SendCmdString(initCmd[i])) i++;
 	}
 }
-uint8 buffUsbTx[SPI_BUFFER_SIZE];
+uint8 buffUsbTx[USBUART_BUFFER_SIZE];
 uint8 iBuffUsbTx = 0;
+uint8 buffUsbTxDebug[USBUART_BUFFER_SIZE];
+uint8 iBuffUsbTxDebug = 0;
 
 CY_ISR(ISRReadSPI)
 {
@@ -383,6 +385,11 @@ CY_ISR(ISRHRTx)
 		ibuffFrame += 2;
 		memcpy( (buffFrame + ibuffFrame), frameSync, 2);
 		ibuffFrame += 2;
+//		buffUsbTxDebug[iBuffUsbTxDebug++] = '{';
+//		buffUsbTxDebug[iBuffUsbTxDebug++] = packetFIFOHead;
+//		buffUsbTxDebug[iBuffUsbTxDebug++] = '+';
+//		buffUsbTxDebug[iBuffUsbTxDebug++] = packetFIFOTail;
+//		buffUsbTxDebug[iBuffUsbTxDebug++] = '}';
 		if (packetFIFOHead == packetFIFOTail)
 		{
 			nullFrame = TRUE;
@@ -393,6 +400,13 @@ CY_ISR(ISRHRTx)
 			uint8 nBytes;
 			uint8 curEOR= packetFIFO[packetFIFOHead].EOR;
 			uint8 curRead = buffSPIRead[curSPIDev];
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = curSPIDev;
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = curRead;
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = curEOR;
+//			buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
 			while((packetFIFOHead != packetFIFOTail) && (nDataBytesLeft > 0))
 			{
 				if (curEOR >= curRead)
@@ -403,7 +417,7 @@ CY_ISR(ISRHRTx)
 				{
 					nBytes = MIN(SPI_BUFFER_SIZE - curRead, nDataBytesLeft);
 				}
-				memcpy( (buffFrame + ibuffFrame), &(frameCnt), nBytes);
+				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev]+curRead, nBytes);
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
 				curRead += nBytes;
@@ -458,6 +472,31 @@ CY_ISR(ISRHRTx)
 		}
 	}
 	tempStatus = UART_HR_Data_ReadTxStatus();
+	if ((0u != USBUART_CD_GetConfiguration()) )//&& (iBuffUsbTx > 0))
+		{
+ 
+			/* Wait until component is ready to send data to host. */
+			if (USBUART_CD_CDCIsReady()) // && ((iBuffUsbTx > 0) || (iBuffUsbTxDebug > 0)))
+			{
+				if (iBuffUsbTx > 0)
+				{
+					USBUART_CD_PutData(buffUsbTx, iBuffUsbTx);
+					iBuffUsbTx = 0; //TODO handle missed writes
+				}
+				if (iBuffUsbTxDebug > 0)
+				{
+					while (0 == USBUART_CD_CDCIsReady());
+					USBUART_CD_PutData(buffUsbTxDebug, iBuffUsbTxDebug);
+					iBuffUsbTxDebug = 0; //TODO handle missed writes
+				}
+			}
+		}
+		else
+		{
+			iBuffUsbTx = 0; //TODO handle missed writes
+			iBuffUsbTxDebug = 0; //TODO handle missed writes
+		}
+
 //	CyExitCriticalSection(intState);
 }
 
@@ -468,8 +507,8 @@ int main(void)
 //	cmdBuff[CMDBUFFSIZE - 1] = FILLBYTE;
 //	uint8 buffUsbTx[SPI_BUFFER_SIZE];
 //	uint8 iBuffUsbTx = 0;
-	uint8 buffUsbTxDebug[SPI_BUFFER_SIZE];
-	uint8 iBuffUsbTxDebug = 0;
+//	uint8 buffUsbTxDebug[SPI_BUFFER_SIZE];
+//	uint8 iBuffUsbTxDebug = 0;
 	uint8 buffUsbRx[USBUART_BUFFER_SIZE];
 	uint8 iBuffUsbRx = 0;
 	uint8 nBuffUsbRx = 0;
@@ -755,17 +794,17 @@ int main(void)
 					if (buffSPICurHead[iSPIDev] == buffSPIWrite[iSPIDev]) //TODO this should't be true due to ISR
 					{
 											
-						uint8 nBytes = SPI_BUFFER_SIZE - buffSPIRead[iSPIDev];
-						
-						
-						memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
-						iBuffUsbTx += nBytes;
-						if (nBytes < SPI_BUFFER_SIZE)
-						{
-							nBytes = SPI_BUFFER_SIZE - nBytes;
-							memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][0]), nBytes);
-							iBuffUsbTx += nBytes;
-						}
+//						uint8 nBytes = SPI_BUFFER_SIZE - buffSPIRead[iSPIDev];
+//						
+//						
+//						memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
+//						iBuffUsbTx += nBytes;
+//						if (nBytes < SPI_BUFFER_SIZE)
+//						{
+//							nBytes = SPI_BUFFER_SIZE - nBytes;
+//							memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][0]), nBytes);
+//							iBuffUsbTx += nBytes;
+//						}
 						readStatusBP = EORERROR;
 					}
 					//if ((1u == Pin_nDrdy_Read()) && (0u != (SPIM_BP_STS_SPI_IDLE | SPIM_BP_TX_STATUS_REG)))
@@ -793,14 +832,14 @@ int main(void)
 						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
 						packetFIFO[packetFIFOTail].index = iSPIDev;
 						packetFIFO[packetFIFOTail].EOR = tempBuffWrite;
-						WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
-						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
-						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
-						buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
-						buffUsbTxDebug[iBuffUsbTxDebug++] = buffSPICurHead[iSPIDev];
-						buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
-						buffUsbTxDebug[iBuffUsbTxDebug++] = tempBuffWrite;
-						buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
+						packetFIFOTail = WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = buffSPICurHead[iSPIDev];
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = tempBuffWrite;
+//						buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
 						
 						
 						
@@ -951,19 +990,19 @@ int main(void)
 //				}
 				if (iBuffUsbTx > 0)
 				{
-					for(uint8 x = 0; x < iBuffUsbTx; x += USBUART_BUFFER_SIZE)
-					{
-						uint8 iTemp = iBuffUsbTx - x;
-						iTemp = MIN(iTemp, USBUART_BUFFER_SIZE);
+//					for(uint8 x = 0; x < iBuffUsbTx; x += USBUART_BUFFER_SIZE)
+//					{
+//						uint8 iTemp = iBuffUsbTx - x;
+//						iTemp = MIN(iTemp, USBUART_BUFFER_SIZE);
 //						uint8 tempS[4] = {'m', x, iTemp, 'n'};
 //						USBUART_CD_PutData(tempS, 4);
-						while (0 == USBUART_CD_CDCIsReady());
-						USBUART_CD_PutData(buffUsbTx + x, iTemp);
+//						while (0 == USBUART_CD_CDCIsReady());
+						USBUART_CD_PutData(buffUsbTx, iBuffUsbTx);
 //						if (USBUART_BUFFER_SIZE == iTemp)
 //						{
 //							CyDelayUs(53333);
 //						}
-					}
+//					}
 //					USBUART_CD_PutChar('#');
 //					USBUART_CD_PutData((const uint8*)(&(iBuffUsbTx)), 1);
 //					char tempS[3];
