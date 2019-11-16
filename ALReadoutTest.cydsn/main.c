@@ -434,7 +434,7 @@ CY_ISR(ISRHRTx)
 				}
 				else if (curRead >= SPI_BUFFER_SIZE)
 				{
-					curRead = 0;
+					curRead = buffSPIRead[curSPIDev] = 0;
 				}
 				else
 				{
