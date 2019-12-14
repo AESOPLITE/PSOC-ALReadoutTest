@@ -98,6 +98,10 @@ PacketLocation packetFIFO[PACKET_FIFO_SIZE];
 uint8 packetFIFOHead = 0u;
 uint8 packetFIFOTail = 0u;
 
+uint8 buffUsbTx[USBUART_BUFFER_SIZE];
+uint8 iBuffUsbTx = 0;
+uint8 buffUsbTxDebug[USBUART_BUFFER_SIZE];
+uint8 iBuffUsbTxDebug = 0;
 
 //const uint8 continueReadFlags = (SPIM_BP_STS_SPI_IDLE | SPIM_BP_STS_TX_FIFO_EMPTY);
 //volatile uint8 continueRead = FALSE;
@@ -200,6 +204,8 @@ uint32 curBaroTempCnt[NUM_BARO];
 uint32 curBaroPresCnt[NUM_BARO];
 uint32 baroReadReady = 0u;
 
+
+
 double BaroTempCalc ( double U, const BaroCoEff * bce )
 {
 	return (((bce->Y1) * U) + ((bce->Y2) * pow(U, 2))  + ((bce->Y3) * pow(U, 3)));
@@ -237,12 +243,10 @@ void SendInitCmds()
 	while (i < NUMBER_INIT_CMDS)
 	{
 		if (0 == SendCmdString(initCmd[i])) i++;
+		CyDelay(1000); //TODO Debug
 	}
 }
-uint8 buffUsbTx[USBUART_BUFFER_SIZE];
-uint8 iBuffUsbTx = 0;
-uint8 buffUsbTxDebug[USBUART_BUFFER_SIZE];
-uint8 iBuffUsbTxDebug = 0;
+
 
 CY_ISR(ISRReadSPI)
 {
@@ -561,7 +565,7 @@ int main(void)
 	
 	
 	
-	Timer_Tsync_Start();
+//	Timer_Tsync_Start();
 //	Timer_SelLow_Start();
 	Timer_Drdy_Start();
 
