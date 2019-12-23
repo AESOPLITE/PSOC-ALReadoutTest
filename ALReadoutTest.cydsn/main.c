@@ -68,6 +68,8 @@ const uint8 tabSPISel[NUM_SPI_DEV] = {POW_SEL, PHA_SEL, CTR1_SEL, TKR_SEL, CTR3_
 #define TKR_HEAD	(0xF4u)
 #define CTR3_HEAD	(0xFAu)
 #define EOR_HEAD	(0xFFu)
+#define DUMP_HEAD	(0xF5u)
+#define ENDDUMP_HEAD	(0xF7u)
 const uint8 tabSPIHead[NUM_SPI_DEV] = {POW_HEAD, PHA_HEAD, CTR1_HEAD, TKR_HEAD, CTR3_HEAD};
 const uint8 frame00FF[2] = {0x00u, 0xFFu};
 uint8 buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
@@ -102,6 +104,19 @@ uint8 buffUsbTx[USBUART_BUFFER_SIZE];
 uint8 iBuffUsbTx = 0;
 uint8 buffUsbTxDebug[USBUART_BUFFER_SIZE];
 uint8 iBuffUsbTxDebug = 0;
+
+#define FRAME_DATA_BYTES	(27u)
+#define FRAME_BUFFER_SIZE	(64u)
+uint8 buffFrameData[FRAME_BUFFER_SIZE][FRAME_DATA_BYTES];
+uint8 buffFrameDataRead = 0;
+uint8 buffFrameDataWrite = 0;
+
+
+#define COUNTER_PACKET_BYTES	(45u)
+
+
+
+
 
 //const uint8 continueReadFlags = (SPIM_BP_STS_SPI_IDLE | SPIM_BP_STS_TX_FIFO_EMPTY);
 //volatile uint8 continueRead = FALSE;
@@ -195,7 +210,13 @@ typedef struct BaroCoeff {
 } BaroCoEff;
 
 #define BARO_COUNT_TO_US (12)
-#define NUM_BARO 1
+#define NUM_BARO 2
+#define NUM_BARO_CAPTURES 4
+
+uint16 buffBaroCap[NUM_BARO *2][NUM_BARO_CAPTURES];
+uint8 buffBaroCapRead[NUM_BARO];
+uint8 buffBaroCapWrite[NUM_BARO];
+
 //const BaroCoEff baroCE[NUM_BARO] = {{.U0 = 1.0, .Y1 = 1.0, .Y2 = 1.0, .Y3 = 1.0, .C1 = 1.0, .C2 = 1.0, .C3 = 1.0, .D1 = 1.0, .D2 = 1.0, .T1 = 1.0, .T2 = 1.0, .T3 = 1.0, .T4 = 1.0, .T5 = 1.0 }};
 const BaroCoEff baroCE[NUM_BARO] = {{.U0 = 5.875516, .Y1 = -3947.926, .Y2 = -10090.9, .Y3 = 0.0, .C1 = 95.4503, .C2 = 2.982818, .C3 = -135.3036, .D1 = 0.042247, .D2 = 0.0, .T1 = 27.91302, .T2 = 0.873949, .T3 = 21.00155, .T4 = 36.63574, .T5 = 0.0 }};
 double curBaroTemp[NUM_BARO];
@@ -503,6 +524,11 @@ CY_ISR(ISRHRTx)
 
 //	CyExitCriticalSection(intState);
 }
+CY_ISR(ISRBaroCap)
+{
+	
+}
+
 
 int main(void)
 {
@@ -569,8 +595,10 @@ int main(void)
 //	Timer_SelLow_Start();
 	Timer_Drdy_Start();
 
-	Counter_BaroPres_Start();
-	Counter_BaroTemp_Start();
+	Counter_BaroPres1_Start();
+	Counter_BaroTemp1_Start();
+	Counter_BaroPres2_Start();
+	Counter_BaroTemp2_Start();
 //	cmdBuff[0] = 0x0Fu;
 //	cmdBuff[1] = 0xF0u;
 //	SPIM_BP_WriteTxData(cmdBuff[0]);
