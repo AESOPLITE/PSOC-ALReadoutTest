@@ -529,38 +529,47 @@ CY_ISR(ISRBaroCap)
 {
 	
 	uint8 continueCheck = FALSE;
+//	uint8 n =0;
 	do {
 		uint8 i = 0;
-		if (0 == (Counter_BaroTemp1_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroTemp1_ReadStatusRegister()))
+//		uint tempStatus = Counter_BaroTemp1_ReadStatusRegister();
+//		UART_HR_Data_PutChar(Counter_BaroTemp1_STATUS_FIFONEMP);
+//		UART_HR_Data_PutChar(tempStatus);
+//		UART_HR_Data_PutChar(Counter_BaroTemp1_STATUS_FIFONEMP & tempStatus);
+//		Counter_BaroTemp1_ReadCapture();
+		continueCheck = FALSE;
+		if (0 != (Counter_BaroTemp1_STATUS_FIFONEMP & Counter_BaroTemp1_ReadStatusRegister()))
 		{
 			continueCheck = TRUE;
 			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroTemp1_ReadCapture();
 			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
 		}
 		i = 2;
-		if (0 == (Counter_BaroTemp2_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroTemp2_ReadStatusRegister()))
+		if (0 != (Counter_BaroTemp2_STATUS_FIFONEMP & Counter_BaroTemp2_ReadStatusRegister()))
 		{
 			continueCheck = TRUE;
 			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroTemp2_ReadCapture();
 			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
 		}
 		i = 1;
-		if (0 == (Counter_BaroPres1_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroPres1_ReadStatusRegister()))
+		if (0 != (Counter_BaroPres1_STATUS_FIFONEMP & Counter_BaroPres1_ReadStatusRegister()))
 		{
 			continueCheck = TRUE;
 			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroPres1_ReadCapture();
 			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
 		}
 		i = 3;
-		if (0 == (Counter_BaroPres2_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroPres2_ReadStatusRegister()))
+		if (0 != (Counter_BaroPres2_STATUS_FIFONEMP & Counter_BaroPres2_ReadStatusRegister()))
 		{
 			continueCheck = TRUE;
 			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroPres2_ReadCapture();
 			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
 		}
+//		n++;
 	} while(continueCheck);
 	//TODO Packing of Baro values along with thers like voltage.  For now just dump it to stream
 	UART_HR_Data_PutChar(DUMP_HEAD);
+//	UART_HR_Data_PutChar(n);
 	UART_HR_Data_PutArray((uint8*) buffBaroCap, sizeof(buffBaroCap));
 	UART_HR_Data_PutChar(ENDDUMP_HEAD);
 	for (uint8 i=0;i<(NUM_BARO *2); i++) buffBaroCapRead[i] = buffBaroCapWrite[i];
@@ -649,7 +658,7 @@ int main(void)
 	isr_HR_StartEx(ISRHRTx);
 	
 	SendInitCmds();
-	
+	isr_B_StartEx(ISRBaroCap);
 	for(;;)
 	{
 		
