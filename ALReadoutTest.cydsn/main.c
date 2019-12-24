@@ -386,7 +386,8 @@ CY_ISR(ISRHRTx)
 //	isr_HR_ClearPending();
 //	isr_HR_Enable();
 	
-	if (UART_HR_Data_GetTxBufferSize() <= 1)
+	if (0) //TODO integrate Baro and SPI to buffframedata
+//	if (UART_HR_Data_GetTxBufferSize() <= 1)
 	{
 //	if (FALSE !=((UART_HR_Data_TX_STS_FIFO_EMPTY | UART_HR_Data_TX_STS_COMPLETE) & tempStatus))
 //	{
@@ -526,6 +527,44 @@ CY_ISR(ISRHRTx)
 }
 CY_ISR(ISRBaroCap)
 {
+	
+	uint8 continueCheck = FALSE;
+	do {
+		uint8 i = 0;
+		if (0 == (Counter_BaroTemp1_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroTemp1_ReadStatusRegister()))
+		{
+			continueCheck = TRUE;
+			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroTemp1_ReadCapture();
+			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
+		}
+		i = 2;
+		if (0 == (Counter_BaroTemp2_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroTemp2_ReadStatusRegister()))
+		{
+			continueCheck = TRUE;
+			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroTemp2_ReadCapture();
+			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
+		}
+		i = 1;
+		if (0 == (Counter_BaroPres1_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroPres1_ReadStatusRegister()))
+		{
+			continueCheck = TRUE;
+			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroPres1_ReadCapture();
+			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
+		}
+		i = 3;
+		if (0 == (Counter_BaroPres2_STATUS_FIFONEMP_INT_EN_MASK | Counter_BaroPres2_ReadStatusRegister()))
+		{
+			continueCheck = TRUE;
+			buffBaroCap[i][buffBaroCapWrite[i]] = Counter_BaroPres2_ReadCapture();
+			buffBaroCapWrite[i] = WRAPINC(buffBaroCapWrite[i], NUM_BARO_CAPTURES);
+		}
+	} while(continueCheck);
+	//TODO Packing of Baro values along with thers like voltage.  For now just dump it to stream
+	UART_HR_Data_PutChar(DUMP_HEAD);
+	UART_HR_Data_PutArray((uint8*) buffBaroCap, sizeof(buffBaroCap));
+	UART_HR_Data_PutChar(ENDDUMP_HEAD);
+	for (uint8 i=0;i<(NUM_BARO *2); i++) buffBaroCapRead[i] = buffBaroCapWrite[i];
+	
 	
 }
 
