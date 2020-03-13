@@ -386,8 +386,8 @@ CY_ISR(ISRHRTx)
 //	isr_HR_ClearPending();
 //	isr_HR_Enable();
 	
-	if (0) //TODO integrate Baro and SPI to buffframedata
-//	if (UART_HR_Data_GetTxBufferSize() <= 1)
+//	if (0) //TODO integrate Baro and SPI to buffframedata
+	if (UART_HR_Data_GetTxBufferSize() <= 1)
 	{
 //	if (FALSE !=((UART_HR_Data_TX_STS_FIFO_EMPTY | UART_HR_Data_TX_STS_COMPLETE) & tempStatus))
 //	{
@@ -568,10 +568,10 @@ CY_ISR(ISRBaroCap)
 //		n++;
 	} while(continueCheck);
 	//TODO Packing of Baro values along with thers like voltage.  For now just dump it to stream
-	UART_HR_Data_PutChar(DUMP_HEAD);
+//	UART_HR_Data_PutChar(DUMP_HEAD);
 //	UART_HR_Data_PutChar(n);
-	UART_HR_Data_PutArray((uint8*) buffBaroCap, sizeof(buffBaroCap));
-	UART_HR_Data_PutChar(ENDDUMP_HEAD);
+//	UART_HR_Data_PutArray((uint8*) buffBaroCap, sizeof(buffBaroCap));
+//	UART_HR_Data_PutChar(ENDDUMP_HEAD);
 	for (uint8 i=0;i<(NUM_BARO *2); i++) buffBaroCapRead[i] = buffBaroCapWrite[i];
 	
 	
@@ -732,21 +732,22 @@ int main(void)
 					memcpy(buffUsbTxDebug +2, curCmd, COMMAND_CHARS);
 					iBuffUsbTxDebug += 6;
 					//Write 3 times cmd on backplane
-					for (uint8 x=0; x<3; x++)
-					{
-						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
-						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, START_COMMAND, START_COMMAND_SIZE);
-						iBuffUsbTxDebug += START_COMMAND_SIZE;
-						UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
-						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, curCmd, COMMAND_CHARS);
-						iBuffUsbTxDebug += COMMAND_CHARS;
-						UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
-						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, END_COMMAND, END_COMMAND_SIZE);
-						iBuffUsbTxDebug += END_COMMAND_SIZE;
-					}
-					//Unix style line end
-					UART_Cmd_PutChar(CR);
-					UART_Cmd_PutChar(LF);	
+                    SendCmdString(curCmd);
+//					for (uint8 x=0; x<3; x++)
+//					{
+//						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
+//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, START_COMMAND, START_COMMAND_SIZE);
+//						iBuffUsbTxDebug += START_COMMAND_SIZE;
+//						UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
+//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, curCmd, COMMAND_CHARS);
+//						iBuffUsbTxDebug += COMMAND_CHARS;
+//						UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
+//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, END_COMMAND, END_COMMAND_SIZE);
+//						iBuffUsbTxDebug += END_COMMAND_SIZE;
+//					}
+//					//Unix style line end
+//					UART_Cmd_PutChar(CR);
+//					UART_Cmd_PutChar(LF);	
 				}
 				else 
 				{
