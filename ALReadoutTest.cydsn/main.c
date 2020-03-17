@@ -242,10 +242,10 @@ double BaroPresCalc ( double Tao, double U, const BaroCoEff * bce )
 	return ((C * ratio) * (1 - (D * ratio)));
 }
 
-int SendCmdString (uint8 * in)
+int SendCmdString (uint8 * in, uint8 convert2Ascii)
 {
 	if (0 != UART_Cmd_GetTxBufferSize()) return -1; // Not ready to send 
-	sprintf((char *)curCmd, "%x%x", (char)(*in), (char)*(in+1));
+	if (convert2Ascii) sprintf((char *)curCmd, "%x%x", (char)(*in), (char)*(in+1));
 	for (uint8 x=0; x<3; x++)
 	{
 		UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
@@ -263,7 +263,7 @@ void SendInitCmds()
 	int i = 0;
 	while (i < NUMBER_INIT_CMDS)
 	{
-		if (0 == SendCmdString(initCmd[i])) i++;
+		if (0 == SendCmdString(initCmd[i], TRUE)) i++;
 		CyDelay(1000); //TODO Debug
 	}
 }
@@ -732,7 +732,7 @@ int main(void)
 					memcpy(buffUsbTxDebug +2, curCmd, COMMAND_CHARS);
 					iBuffUsbTxDebug += 6;
 					//Write 3 times cmd on backplane
-                    SendCmdString(curCmd);
+                    SendCmdString(curCmd, FALSE);
 //					for (uint8 x=0; x<3; x++)
 //					{
 //						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
