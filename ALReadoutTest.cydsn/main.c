@@ -15,6 +15,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "math.h"
+#include "errno.h"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -242,19 +243,52 @@ double BaroPresCalc ( double Tao, double U, const BaroCoEff * bce )
 	return ((C * ratio) * (1 - (D * ratio)));
 }
 
-int SendCmdString (uint8 * in, uint8 convert2Ascii)
+/*******************************************************************************
+* Function Name: CmdBytes2String
+********************************************************************************
+*
+* Summary:
+*  Converts a 2 byte command in binary to a 4 byte ASCII representation of that 
+*  command (null terminator is the 5th byte).  
+*
+* Parameters:
+*  in:  uint8 pointer to 2 bytes to be converted 
+*  out: uint8 pointer to 5 byte null terminted string of the result of 
+*  2byte command converted to capitalized ASCII hexadecimal characters   
+*  
+* Return:
+*  int number of charaters returned. Should be 4 on success, negative on fault
+*
+*******************************************************************************/
+int CmdBytes2String (uint8* in, uint8* out)
 {
-	if (0 != UART_Cmd_GetTxBufferSize()) return -1; // Not ready to send 
-	if (convert2Ascii) sprintf((char *)curCmd, "%x%x", (char)(*in), (char)*(in+1));
+    if ((NULL == in) || (NULL == (in + 1)) || (NULL == out)) //check for null pointers
+    {
+        return -EFAULT; //null pointer error, sprint might also do this
+    }
+	return sprintf((char*)out, "%02X%02X", *(in), *(in + 1)); //converts the 2 bytes to hex with leading zerosv
+}
+
+int SendCmdString (uint8 * in)
+{
+	if (0 != UART_Cmd_GetTxBufferSize()) return -EBUSY; // Not ready to send 
+//	if (convert2Ascii) sprintf((char *)curCmd, "%x%x", (char)(*in), (char)*(in+1));
 	for (uint8 x=0; x<3; x++)
 	{
 		UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
-		UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
+		UART_Cmd_PutArray(in, COMMAND_CHARS);
 		UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
 	}
 	//Unix style line end
 	UART_Cmd_PutChar(CR);
 	UART_Cmd_PutChar(LF);
+    //Debug
+    if (USBUART_CD_CDCIsReady())
+    {
+        *(in+4) = LF;
+        USBUART_CD_PutData(in, COMMAND_CHARS +1);
+
+    }
 	return 0;
 }
 
@@ -263,7 +297,22 @@ void SendInitCmds()
 	int i = 0;
 	while (i < NUMBER_INIT_CMDS)
 	{
-		if (0 == SendCmdString(initCmd[i], TRUE)) i++;
+        int8 convResult = CmdBytes2String(initCmd[i], curCmd);
+        if (4 == convResult)
+        {
+		    if (0 == SendCmdString(curCmd)) i++; //, TRUE)) i++;
+        }
+        else 
+        {
+            //TODO error handling and counting
+            i++;   
+        }
+        if (i > 24)
+//        {
+//            memcpy(buffUsbTxDebug, curCmd, COMMAND_CHARS);
+//        	iBuffUsbTxDebug += 4;
+//            buffUsbTxDebug[iBuffUsbTxDebug++] = '\n';
+//        }
 		CyDelay(1000); //TODO Debug
 	}
 }
@@ -732,7 +781,7 @@ int main(void)
 					memcpy(buffUsbTxDebug +2, curCmd, COMMAND_CHARS);
 					iBuffUsbTxDebug += 6;
 					//Write 3 times cmd on backplane
-                    SendCmdString(curCmd, FALSE);
+                    SendCmdString(curCmd);//, FALSE);
 //					for (uint8 x=0; x<3; x++)
 //					{
 //						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
