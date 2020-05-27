@@ -37,6 +37,10 @@
 #define END_COMMAND_SIZE	 4u //Size of End command string after the 4 command char, CIP is 01 which is ignored
 #define CR	(0x0Du) //Carriage return in hex
 #define LF	(0x0Au) //Line feed in hex
+#define DLE	(0x10u) //Data Link Escape Used as low rate packet header
+#define ETX	(0x03u) //Data Link Escape Used as low rate packet trailer
+#define CMD_ID	(0x14u) //ID byte for command in low rate packet
+#define REQ_ID	(0x13u) //ID byte for rfequest scince data in low rate packet
 #define FILLBYTE (0xA3u) //SPI never transmits  so could be anything
 //#define CMDBUFFSIZE 3
 /* Project Defines */
@@ -80,6 +84,11 @@ uint8 buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
 uint8 buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
+enum commandStatus {WAIT_DLE, CHECK_ID, CHECK_LEN, READ_CMD, CHECK_ETX_CMD, CHECK_ETX_REQ};
+#define COMMAND_SOURCES 3
+enum commandStatus commandStatusC[COMMAND_SOURCES];
+uint8 commandLenC[COMMAND_SOURCES];
+uint8 cmdRxC[COMMAND_SOURCES][2];
 #define COMMAND_CHARS	(4u)
 uint8 curCmd[COMMAND_CHARS+1]; //one extra char for null
 uint8 iCurCmd = 0u;
@@ -192,6 +201,9 @@ uint8 initCmd[NUMBER_INIT_CMDS][2] = {
 	{0xF8, 0x38}, //T1 T2 T3 Coincidence
 	{0x0A, 0xB7}, //10sec counter R/O
 	{0x0A, 0xB6} }; //10sec Power R/O
+uint8 buffCmd[NUMBER_INIT_CMDS][2];
+uint8 readBuffCmd = 0;
+uint8 writeBuffCmd = 0;
 
 typedef struct BaroCoeff {
 	const double U0;
@@ -317,6 +329,76 @@ void SendInitCmds()
 	}
 }
 
+CY_ISR(ISRCheckCmd)
+{
+    uint8 intState = CyEnterCriticalSection();
+    uint8 tempStatus1 = UART_LR_Cmd_1_ReadRxStatus();
+    uint8 tempStatus2 = UART_LR_Cmd_2_ReadRxStatus();
+    uint8 tempRx;
+//    buffUsbTxDebug[iBuffUsbTxDebug++] = UART_LR_Cmd_1_GetRxBufferSize(); //debug
+    if((tempStatus1 | UART_LR_Cmd_1_RX_STS_FIFO_NOTEMPTY) > 0)
+    {
+        
+        while(UART_LR_Cmd_1_GetRxBufferSize())   
+        {
+            tempRx = UART_LR_Cmd_1_ReadRxData();  
+//            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
+            switch(commandStatusC[0])
+            {
+                case WAIT_DLE:
+                    if (DLE == tempRx) commandStatusC[0] = CHECK_ID;
+                    break;
+                case CHECK_ID:
+                    if (CMD_ID == tempRx) commandStatusC[0] = CHECK_LEN;
+                    break;
+                case CHECK_LEN:
+                    if(2 == tempRx){
+                        commandLenC[0] = tempRx;
+                        commandStatusC[0] = READ_CMD;
+                    }
+                    else commandStatusC[0] = WAIT_DLE;
+                    break;
+                case READ_CMD:
+                    if(commandLenC[0] > 0)
+                    {
+                        cmdRxC[0][commandLenC[0] % 2] = tempRx;
+                        commandLenC[0]--;
+//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[0]; //debug
+                        if(0 == commandLenC[0])  commandStatusC[0]= CHECK_ETX_CMD;
+                    }
+                    
+                    break;
+                case CHECK_ETX_CMD:
+                    if (ETX == tempRx)
+                    {
+                        
+                        int tempRes = CmdBytes2String(cmdRxC[0], curCmd);
+                        if(tempRes >= 0)
+                        {
+                            tempRes = SendCmdString(curCmd);  
+                            if (-EBUSY == tempRes)
+                            {
+                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[0], 2); //busy queue for later
+                            }
+                            else if (tempRes < 0)
+                            {
+                                //TODO Error handling
+                            }
+                        }
+                    }
+                    else 
+                    {
+                        //TODO error
+                    }
+                    commandStatusC[0] = WAIT_DLE;
+                    break;
+            }
+                
+        }
+    }
+    
+    CyExitCriticalSection(intState);
+}
 
 CY_ISR(ISRReadSPI)
 {
@@ -640,7 +722,7 @@ int main(void)
 	uint8 iBuffUsbRx = 0;
 	uint8 nBuffUsbRx = 0;
 	enum readStatus readStatusBP = CHECKDATA;
-	
+    
 	memset(buffSPIRead, 0, NUM_SPI_DEV);
 	memset(buffSPIWrite, 0, NUM_SPI_DEV);
 	memset(buffSPICurHead, 0, NUM_SPI_DEV);
@@ -650,6 +732,7 @@ int main(void)
 	memset(curBaroPres, 0, NUM_BARO);
 	memset(curBaroTempCnt, 0, NUM_BARO);
 	memset(curBaroPresCnt, 0, NUM_BARO);
+    memset(commandStatusC, WAIT_DLE, COMMAND_SOURCES);
 //	buffUsbTx[3] = 0x55;
 //	buffUsbTx[4] = 0xAA;
 //	buffUsbTx[5] = 0x55;
@@ -662,6 +745,10 @@ int main(void)
 	USBUART_CD_Start(USBFS_DEVICE, USBUART_CD_5V_OPERATION);
 	UART_Cmd_Start();
 	UART_HR_Data_Start();
+	UART_LR_Cmd_1_Start();
+	UART_LR_Cmd_1_Start();
+	UART_LR_Data_Start();
+    
    
 		   /* Service USB CDC when device is configured. */
 //	if ((0u != USBUART_CD_GetConfiguration()) && (iBuffUsbTx > 0))
@@ -685,6 +772,7 @@ int main(void)
 	isr_R_StartEx(ISRReadSPI);
 	isr_W_StartEx(ISRWriteSPI);
 	isr_C_StartEx(ISRDrdyCap);
+	isr_Cm_StartEx(ISRCheckCmd);
 	
 	
 	
@@ -749,66 +837,73 @@ int main(void)
 				/* Read received data and re-enable OUT endpoint. */
 				nBuffUsbRx = USBUART_CD_GetAll(buffUsbRx);
 				iBuffUsbRx = 0;
+//                buffUsbTxDebug[iBuffUsbTxDebug++] = nBuffUsbRx; //Debug
 
 			}
 		}
-		
-		if (nBuffUsbRx > iBuffUsbRx)
+		if ((6 == nBuffUsbRx) && (DLE == buffUsbRx[0])) //debug 
 		{
-			uint8 nByteCpy =  MIN(COMMAND_CHARS - iCurCmd, nBuffUsbRx - iBuffUsbRx);
-			if (nByteCpy > 0)
-			{
-				memcpy((curCmd + iCurCmd), (buffUsbRx + iBuffUsbRx), nByteCpy);
-				iCurCmd += nByteCpy;
-				iBuffUsbRx += nByteCpy;
-			}
-				
-			if ((iCurCmd >= COMMAND_CHARS) && (0u != (UART_Cmd_TX_STS_FIFO_EMPTY | UART_Cmd_ReadTxStatus())))
-			{
-				uint8 cmdValid = TRUE;
-				//all nibbles of the command must be uppercase hex char 
-				for(uint8 x = 0; ((x < COMMAND_CHARS) && cmdValid); x++)
-				{
-					if ((!(isxdigit(curCmd[x]))) || (curCmd[x] > 'F'))
-					{
-						cmdValid = FALSE; 
-					}
-				}
-				if (cmdValid)
-				{
-					//DEBUG echo command no boundary check
-					memcpy(buffUsbTxDebug, "++", 2);
-					memcpy(buffUsbTxDebug +2, curCmd, COMMAND_CHARS);
-					iBuffUsbTxDebug += 6;
-					//Write 3 times cmd on backplane
-                    SendCmdString(curCmd);//, FALSE);
-//					for (uint8 x=0; x<3; x++)
+            UART_LR_Data_PutArray(buffUsbRx, 6);
+//            buffUsbTxDebug[iBuffUsbTxDebug++] = '^'; //Debug
+        }
+        iBuffUsbRx = 0;
+        nBuffUsbRx = 0;
+//		if (nBuffUsbRx > iBuffUsbRx)
+//		{
+//			uint8 nByteCpy =  MIN(COMMAND_CHARS - iCurCmd, nBuffUsbRx - iBuffUsbRx);
+//			if (nByteCpy > 0)
+//			{
+//				memcpy((curCmd + iCurCmd), (buffUsbRx + iBuffUsbRx), nByteCpy);
+//				iCurCmd += nByteCpy;
+//				iBuffUsbRx += nByteCpy;
+//			}
+//				
+//			if ((iCurCmd >= COMMAND_CHARS) && (0u != (UART_Cmd_TX_STS_FIFO_EMPTY | UART_Cmd_ReadTxStatus())))
+//			{
+//				uint8 cmdValid = TRUE;
+//				//all nibbles of the command must be uppercase hex char 
+//				for(uint8 x = 0; ((x < COMMAND_CHARS) && cmdValid); x++)
+//				{
+//					if ((!(isxdigit(curCmd[x]))) || (curCmd[x] > 'F'))
 //					{
-//						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
-//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, START_COMMAND, START_COMMAND_SIZE);
-//						iBuffUsbTxDebug += START_COMMAND_SIZE;
-//						UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
-//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, curCmd, COMMAND_CHARS);
-//						iBuffUsbTxDebug += COMMAND_CHARS;
-//						UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
-//						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, END_COMMAND, END_COMMAND_SIZE);
-//						iBuffUsbTxDebug += END_COMMAND_SIZE;
+//						cmdValid = FALSE; 
 //					}
-//					//Unix style line end
-//					UART_Cmd_PutChar(CR);
-//					UART_Cmd_PutChar(LF);	
-				}
-				else 
-				{
-					//DEBUG echo command no boundary check
-					memcpy(buffUsbTxDebug, "--", 2);
-					memcpy(buffUsbTxDebug + 2, curCmd, COMMAND_CHARS);
-					iBuffUsbTxDebug += 6;
-				}
-				iCurCmd = 0;	
-			}
+//				}
+//				if (cmdValid)
+//				{
+//					//DEBUG echo command no boundary check
+//					memcpy(buffUsbTxDebug, "++", 2);
+//					memcpy(buffUsbTxDebug +2, curCmd, COMMAND_CHARS);
+//					iBuffUsbTxDebug += 6;
+//					//Write 3 times cmd on backplane
+//                    SendCmdString(curCmd);//, FALSE);
+////					for (uint8 x=0; x<3; x++)
+////					{
+////						UART_Cmd_PutArray(START_COMMAND, START_COMMAND_SIZE);
+////						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, START_COMMAND, START_COMMAND_SIZE);
+////						iBuffUsbTxDebug += START_COMMAND_SIZE;
+////						UART_Cmd_PutArray(curCmd, COMMAND_CHARS);
+////						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, curCmd, COMMAND_CHARS);
+////						iBuffUsbTxDebug += COMMAND_CHARS;
+////						UART_Cmd_PutArray(END_COMMAND, END_COMMAND_SIZE);
+////						memcpy(buffUsbTxDebug + iBuffUsbTxDebug, END_COMMAND, END_COMMAND_SIZE);
+////						iBuffUsbTxDebug += END_COMMAND_SIZE;
+////					}
+////					//Unix style line end
+////					UART_Cmd_PutChar(CR);
+////					UART_Cmd_PutChar(LF);	
+//				}
+//				else 
+//				{
+//					//DEBUG echo command no boundary check
+//					memcpy(buffUsbTxDebug, "--", 2);
+//					memcpy(buffUsbTxDebug + 2, curCmd, COMMAND_CHARS);
+//					iBuffUsbTxDebug += 6;
+//				}
+//				iCurCmd = 0;	
+//			}
 			
-		}
+//		}
 		
 		switch (readStatusBP)
 		{
