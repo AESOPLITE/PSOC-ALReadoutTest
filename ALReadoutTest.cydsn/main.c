@@ -85,7 +85,7 @@ uint8 buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
 enum commandStatus {WAIT_DLE, CHECK_ID, CHECK_LEN, READ_CMD, CHECK_ETX_CMD, CHECK_ETX_REQ};
-#define COMMAND_SOURCES 3
+#define COMMAND_SOURCES 1
 enum commandStatus commandStatusC[COMMAND_SOURCES];
 uint8 commandLenC[COMMAND_SOURCES];
 uint8 cmdRxC[COMMAND_SOURCES][2];
@@ -124,7 +124,15 @@ uint8 buffFrameDataWrite = 0;
 
 #define COUNTER_PACKET_BYTES	(45u)
 
-
+/* Defines for DMA_LR_Cmd_1 */
+#define DMA_LR_Cmd_1_BYTES_PER_BURST 1
+#define DMA_LR_Cmd_1_REQUEST_PER_BURST 1
+#define DMA_LR_Cmd_1_SRC_BASE (CYDEV_PERIPH_BASE)
+#define DMA_LR_Cmd_1_DST_BASE (CYDEV_SRAM_BASE)
+#define DMA_LR_Cmd_1_BUFFER_SIZE 16
+uint8 buffCmdRxC[COMMAND_SOURCES][DMA_LR_Cmd_1_BUFFER_SIZE];
+reg16 * buffCmdRxCWritePtr[COMMAND_SOURCES];
+uint8 buffCmdRxCRead[COMMAND_SOURCES];
 
 
 
@@ -327,6 +335,80 @@ void SendInitCmds()
 //        }
 		CyDelay(1000); //TODO Debug
 	}
+}
+
+int CheckCmdDma(uint8 chanSrc)
+{
+   
+    uint8 tempRx;
+    int16 buffNewReadLen = *buffCmdRxCWritePtr[0] - LO16((uint32)buffCmdRxC[chanSrc]);
+//    buffUsbTxDebug[iBuffUsbTxDebug++] = buffNewReadLen & 255; //debug
+    buffNewReadLen -= buffCmdRxCRead[chanSrc];
+    if (buffNewReadLen < 0) buffNewReadLen += DMA_LR_Cmd_1_BUFFER_SIZE;
+//    buffUsbTxDebug[iBuffUsbTxDebug++] = buffNewReadLen & 255; //debug
+    
+    if(TRUE)
+    {
+        
+        while(buffNewReadLen-- > 1)   
+        {
+            buffUsbTxDebug[iBuffUsbTxDebug++] = buffNewReadLen & 255; //debug
+            buffCmdRxCRead[chanSrc] = WRAPINC(buffCmdRxCRead[chanSrc], DMA_LR_Cmd_1_BUFFER_SIZE);
+            tempRx = buffCmdRxC[chanSrc][buffCmdRxCRead[chanSrc]];  
+            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
+            switch(commandStatusC[chanSrc])
+            {
+                case WAIT_DLE:
+                    if (DLE == tempRx) commandStatusC[chanSrc] = CHECK_ID;
+                    break;
+                case CHECK_ID:
+                    if (CMD_ID == tempRx) commandStatusC[chanSrc] = CHECK_LEN;
+                    break;
+                case CHECK_LEN:
+                    if(2 == tempRx){
+                        commandLenC[chanSrc] = tempRx;
+                        commandStatusC[chanSrc] = READ_CMD;
+                    }
+                    else commandStatusC[chanSrc] = WAIT_DLE;
+                    break;
+                case READ_CMD:
+                    if(commandLenC[0] > 0)
+                    {
+                        cmdRxC[chanSrc][commandLenC[chanSrc] % 2] = tempRx;
+                        commandLenC[0]--;
+//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[0]; //debug
+                        if(0 == commandLenC[chanSrc])  commandStatusC[chanSrc]= CHECK_ETX_CMD;
+                    }
+                    
+                    break;
+                case CHECK_ETX_CMD:
+                    if (ETX == tempRx)
+                    {
+                        
+                        int tempRes = CmdBytes2String(cmdRxC[chanSrc], curCmd);
+                        if(tempRes >= 0)
+                        {
+                            tempRes = SendCmdString(curCmd);  
+                            if (-EBUSY == tempRes)
+                            {
+                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[chanSrc], 2); //busy queue for later
+                            }
+                            else if (tempRes < 0)
+                            {
+                                //TODO Error handling
+                            }
+                        }
+                    }
+                    else 
+                    {
+                        //TODO error
+                    }
+                    commandStatusC[chanSrc] = WAIT_DLE;
+                    break;
+            }
+                
+        }
+    }
 }
 
 CY_ISR(ISRCheckCmd)
@@ -723,6 +805,11 @@ int main(void)
 	uint8 nBuffUsbRx = 0;
 	enum readStatus readStatusBP = CHECKDATA;
     
+    /* Variable declarations for DMA_LR_Cmd_1 */
+    /* Move these variable declarations to the top of the function */
+    uint8 DMA_LR_Cmd_1_Chan;
+    uint8 DMA_LR_Cmd_1_TD[1];
+    
 	memset(buffSPIRead, 0, NUM_SPI_DEV);
 	memset(buffSPIWrite, 0, NUM_SPI_DEV);
 	memset(buffSPICurHead, 0, NUM_SPI_DEV);
@@ -733,6 +820,8 @@ int main(void)
 	memset(curBaroTempCnt, 0, NUM_BARO);
 	memset(curBaroPresCnt, 0, NUM_BARO);
     memset(commandStatusC, WAIT_DLE, COMMAND_SOURCES);
+    memset(buffCmdRxCRead, 0, COMMAND_SOURCES);
+    
 //	buffUsbTx[3] = 0x55;
 //	buffUsbTx[4] = 0xAA;
 //	buffUsbTx[5] = 0x55;
@@ -740,6 +829,17 @@ int main(void)
 //	iBuffUsbTx = 7;
 //	uint16 tempSpinTimer = 0; //TODO replace
 	
+    /* DMA Configuration for DMA_LR_Cmd_1 */
+    DMA_LR_Cmd_1_Chan = DMA_LR_Cmd_1_DmaInitialize(DMA_LR_Cmd_1_BYTES_PER_BURST, DMA_LR_Cmd_1_REQUEST_PER_BURST, 
+        HI16(DMA_LR_Cmd_1_SRC_BASE), HI16(DMA_LR_Cmd_1_DST_BASE));
+    DMA_LR_Cmd_1_TD[0] = CyDmaTdAllocate();
+    CyDmaTdSetConfiguration(DMA_LR_Cmd_1_TD[0], DMA_LR_Cmd_1_BUFFER_SIZE, DMA_LR_Cmd_1_TD[0], CY_DMA_TD_INC_SRC_ADR | CY_DMA_TD_INC_DST_ADR);
+    CyDmaTdSetAddress(DMA_LR_Cmd_1_TD[0], LO16((uint32)UART_LR_Cmd_1_RXDATA_REG), LO16((uint32)buffCmdRxC[0]));
+    CyDmaChSetInitialTd(DMA_LR_Cmd_1_Chan, DMA_LR_Cmd_1_TD[0]);
+    CyDmaChEnable(DMA_LR_Cmd_1_Chan, 1);
+    
+    buffCmdRxCWritePtr[0] = (reg16 *) &CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u];
+    
 	SPIM_BP_Start();
 	SPIM_BP_ClearFIFO();
 	USBUART_CD_Start(USBFS_DEVICE, USBUART_CD_5V_OPERATION);
@@ -796,6 +896,8 @@ int main(void)
 	
 	SendInitCmds();
 	isr_B_StartEx(ISRBaroCap);
+    
+    
 	for(;;)
 	{
 		
@@ -845,6 +947,10 @@ int main(void)
 		{
             UART_LR_Data_PutArray(buffUsbRx, 6);
 //            buffUsbTxDebug[iBuffUsbTxDebug++] = '^'; //Debug
+            buffUsbTxDebug[iBuffUsbTxDebug++] = CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u] & 15; //Debug
+            
+//            memcpy(buffUsbTxDebug + iBuffUsbTxDebug, buffCmdRxC, 16);
+//            iBuffUsbTxDebug +=16; //debug
         }
         iBuffUsbRx = 0;
         nBuffUsbRx = 0;
@@ -904,7 +1010,7 @@ int main(void)
 //			}
 			
 //		}
-		
+		CheckCmdDma(0);
 		switch (readStatusBP)
 		{
 			case CHECKDATA:
