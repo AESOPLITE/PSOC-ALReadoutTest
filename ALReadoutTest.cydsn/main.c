@@ -85,7 +85,7 @@ uint8 buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
 enum commandStatus {WAIT_DLE, CHECK_ID, CHECK_LEN, READ_CMD, CHECK_ETX_CMD, CHECK_ETX_REQ};
-#define COMMAND_SOURCES 1
+#define COMMAND_SOURCES 2
 enum commandStatus commandStatusC[COMMAND_SOURCES];
 uint8 commandLenC[COMMAND_SOURCES];
 uint8 cmdRxC[COMMAND_SOURCES][2];
@@ -315,6 +315,7 @@ int SendCmdString (uint8 * in)
 void SendInitCmds()
 {
 	int i = 0;
+	CyDelay(7000); //7 sec delay for boards to init TODO Debug
 	while (i < NUMBER_INIT_CMDS)
 	{
         int8 convResult = CmdBytes2String(initCmd[i], curCmd);
@@ -327,13 +328,13 @@ void SendInitCmds()
             //TODO error handling and counting
             i++;   
         }
-        if (i > 24)
+//        if (i > 24)
 //        {
 //            memcpy(buffUsbTxDebug, curCmd, COMMAND_CHARS);
 //        	iBuffUsbTxDebug += 4;
 //            buffUsbTxDebug[iBuffUsbTxDebug++] = '\n';
 //        }
-		CyDelay(1000); //TODO Debug
+//		CyDelay(1000); //TODO Debug
 	}
 }
 
@@ -417,6 +418,7 @@ CY_ISR(ISRCheckCmd)
     uint8 tempStatus1 = UART_LR_Cmd_1_ReadRxStatus();
     uint8 tempStatus2 = UART_LR_Cmd_2_ReadRxStatus();
     uint8 tempRx;
+    uint8 i = 0;
 //    buffUsbTxDebug[iBuffUsbTxDebug++] = UART_LR_Cmd_1_GetRxBufferSize(); //debug
     if((tempStatus1 | UART_LR_Cmd_1_RX_STS_FIFO_NOTEMPTY) > 0)
     {
@@ -425,28 +427,28 @@ CY_ISR(ISRCheckCmd)
         {
             tempRx = UART_LR_Cmd_1_ReadRxData();  
 //            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
-            switch(commandStatusC[0])
+            switch(commandStatusC[i])
             {
                 case WAIT_DLE:
-                    if (DLE == tempRx) commandStatusC[0] = CHECK_ID;
+                    if (DLE == tempRx) commandStatusC[i] = CHECK_ID;
                     break;
                 case CHECK_ID:
-                    if (CMD_ID == tempRx) commandStatusC[0] = CHECK_LEN;
+                    if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
                     break;
                 case CHECK_LEN:
                     if(2 == tempRx){
-                        commandLenC[0] = tempRx;
-                        commandStatusC[0] = READ_CMD;
+                        commandLenC[i] = tempRx;
+                        commandStatusC[i] = READ_CMD;
                     }
-                    else commandStatusC[0] = WAIT_DLE;
+                    else commandStatusC[i] = WAIT_DLE;
                     break;
                 case READ_CMD:
-                    if(commandLenC[0] > 0)
+                    if(commandLenC[i] > 0)
                     {
-                        cmdRxC[0][commandLenC[0] % 2] = tempRx;
-                        commandLenC[0]--;
-//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[0]; //debug
-                        if(0 == commandLenC[0])  commandStatusC[0]= CHECK_ETX_CMD;
+                        cmdRxC[i][commandLenC[i] % 2] = tempRx;
+                        commandLenC[i]--;
+//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[i]; //debug
+                        if(0 == commandLenC[i])  commandStatusC[i]= CHECK_ETX_CMD;
                     }
                     
                     break;
@@ -454,13 +456,13 @@ CY_ISR(ISRCheckCmd)
                     if (ETX == tempRx)
                     {
                         
-                        int tempRes = CmdBytes2String(cmdRxC[0], curCmd);
+                        int tempRes = CmdBytes2String(cmdRxC[i], curCmd);
                         if(tempRes >= 0)
                         {
                             tempRes = SendCmdString(curCmd);  
                             if (-EBUSY == tempRes)
                             {
-                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[0], 2); //busy queue for later
+                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[i], 2); //busy queue for later
                             }
                             else if (tempRes < 0)
                             {
@@ -472,11 +474,74 @@ CY_ISR(ISRCheckCmd)
                     {
                         //TODO error
                     }
-                    commandStatusC[0] = WAIT_DLE;
+                    commandStatusC[i] = WAIT_DLE;
                     break;
             }
                 
         }
+    }
+    
+    i=1;
+    if((tempStatus1 | UART_LR_Cmd_2_RX_STS_FIFO_NOTEMPTY) > 0)
+    {
+        
+        while(UART_LR_Cmd_2_GetRxBufferSize())   
+        {
+            tempRx = UART_LR_Cmd_2_ReadRxData();  
+//            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
+            switch(commandStatusC[i])
+            {
+                case WAIT_DLE:
+                    if (DLE == tempRx) commandStatusC[i] = CHECK_ID;
+                    break;
+                case CHECK_ID:
+                    if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
+                    break;
+                case CHECK_LEN:
+                    if(2 == tempRx){
+                        commandLenC[i] = tempRx;
+                        commandStatusC[i] = READ_CMD;
+                    }
+                    else commandStatusC[i] = WAIT_DLE;
+                    break;
+                case READ_CMD:
+                    if(commandLenC[i] > 0)
+                    {
+                        cmdRxC[i][commandLenC[i] % 2] = tempRx;
+                        commandLenC[i]--;
+//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[i]; //debug
+                        if(0 == commandLenC[i])  commandStatusC[i]= CHECK_ETX_CMD;
+                    }
+                    
+                    break;
+                case CHECK_ETX_CMD:
+                    if (ETX == tempRx)
+                    {
+                        
+                        int tempRes = CmdBytes2String(cmdRxC[i], curCmd);
+                        if(tempRes >= 0)
+                        {
+                            tempRes = SendCmdString(curCmd);  
+                            if (-EBUSY == tempRes)
+                            {
+                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[i], 2); //busy queue for later
+                            }
+                            else if (tempRes < 0)
+                            {
+                                //TODO Error handling
+                            }
+                        }
+                    }
+                    else 
+                    {
+                        //TODO error
+                    }
+                    commandStatusC[i] = WAIT_DLE;
+                    break;
+            }
+                
+        }
+    
     }
     
     CyExitCriticalSection(intState);
@@ -830,13 +895,13 @@ int main(void)
 //	uint16 tempSpinTimer = 0; //TODO replace
 	
     /* DMA Configuration for DMA_LR_Cmd_1 */
-    DMA_LR_Cmd_1_Chan = DMA_LR_Cmd_1_DmaInitialize(DMA_LR_Cmd_1_BYTES_PER_BURST, DMA_LR_Cmd_1_REQUEST_PER_BURST, 
-        HI16(DMA_LR_Cmd_1_SRC_BASE), HI16(DMA_LR_Cmd_1_DST_BASE));
-    DMA_LR_Cmd_1_TD[0] = CyDmaTdAllocate();
-    CyDmaTdSetConfiguration(DMA_LR_Cmd_1_TD[0], DMA_LR_Cmd_1_BUFFER_SIZE, DMA_LR_Cmd_1_TD[0], CY_DMA_TD_INC_SRC_ADR | CY_DMA_TD_INC_DST_ADR);
-    CyDmaTdSetAddress(DMA_LR_Cmd_1_TD[0], LO16((uint32)UART_LR_Cmd_1_RXDATA_REG), LO16((uint32)buffCmdRxC[0]));
-    CyDmaChSetInitialTd(DMA_LR_Cmd_1_Chan, DMA_LR_Cmd_1_TD[0]);
-    CyDmaChEnable(DMA_LR_Cmd_1_Chan, 1);
+//    DMA_LR_Cmd_1_Chan = DMA_LR_Cmd_1_DmaInitialize(DMA_LR_Cmd_1_BYTES_PER_BURST, DMA_LR_Cmd_1_REQUEST_PER_BURST, 
+//        HI16(DMA_LR_Cmd_1_SRC_BASE), HI16(DMA_LR_Cmd_1_DST_BASE));
+//    DMA_LR_Cmd_1_TD[0] = CyDmaTdAllocate();
+//    CyDmaTdSetConfiguration(DMA_LR_Cmd_1_TD[0], DMA_LR_Cmd_1_BUFFER_SIZE, DMA_LR_Cmd_1_TD[0], CY_DMA_TD_INC_DST_ADR);
+//    CyDmaTdSetAddress(DMA_LR_Cmd_1_TD[0], LO16((uint32)UART_LR_Cmd_1_RXDATA_REG), LO16((uint32)buffCmdRxC[0]));
+//    CyDmaChSetInitialTd(DMA_LR_Cmd_1_Chan, DMA_LR_Cmd_1_TD[0]);
+//    CyDmaChEnable(DMA_LR_Cmd_1_Chan, 1);
     
     buffCmdRxCWritePtr[0] = (reg16 *) &CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u];
     
@@ -846,7 +911,7 @@ int main(void)
 	UART_Cmd_Start();
 	UART_HR_Data_Start();
 	UART_LR_Cmd_1_Start();
-	UART_LR_Cmd_1_Start();
+	UART_LR_Cmd_2_Start();
 	UART_LR_Data_Start();
     
    
@@ -1010,7 +1075,7 @@ int main(void)
 //			}
 			
 //		}
-		CheckCmdDma(0);
+//		CheckCmdDma(0);
 		switch (readStatusBP)
 		{
 			case CHECKDATA:
