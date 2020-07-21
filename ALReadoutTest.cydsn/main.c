@@ -1207,54 +1207,81 @@ int main(void)
 					else
 					{
 						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
-						
+						int16 tempLen = tempBuffWrite - buffSPICurHead[iSPIDev];
+                        
 //						uint8 nBytes;
 						
-						buffSPIWrite[iSPIDev] = WRAP3INC(buffSPIWrite[iSPIDev], SPI_BUFFER_SIZE);
-						buffSPI[iSPIDev][tempBuffWrite] = EOR_HEAD;
-						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
-						if((SPI_BUFFER_SIZE - 1) == tempBuffWrite) //check for 2 byte wrap
-						{
-							buffSPI[iSPIDev][(SPI_BUFFER_SIZE - 1)] = frame00FF[0];
-							buffSPI[iSPIDev][0] = frame00FF[1];
-							tempBuffWrite = 0;
-						}
-						else
-						{
-							memcpy(&(buffSPI[iSPIDev][tempBuffWrite]), frame00FF, 2);
-							tempBuffWrite += 1; //this is te locatiion of the last byte
-						}
-						
-						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
-						packetFIFO[packetFIFOTail].index = iSPIDev;
-						packetFIFO[packetFIFOTail].EOR = tempBuffWrite;
-						packetFIFOTail = WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = buffSPICurHead[iSPIDev];
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = tempBuffWrite;
-//						buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
-						
-						
-						
-//						buffSPI[iSPIDev][tempBuffWrite] = 0x00;
-//						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
-//						buffSPI[iSPIDev][tempBuffWrite] = 0xFF;
-//						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
-//						if (buffSPIRead[iSPIDev] >= tempBuffWrite)
-//						{
-//							nBytes = SPI_BUFFER_SIZE - buffSPIRead[iSPIDev];
-//							memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
-//							iBuffUsbTx += nBytes;
-//							buffSPIRead[iSPIDev] = 0;
-//						}
-//						nBytes = tempBuffWrite - buffSPIRead[iSPIDev];
-//						memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
-//						iBuffUsbTx += nBytes;
-//						buffSPIRead[iSPIDev] = tempBuffWrite;
-						readStatusBP = EORFOUND;
+                        if (0 > tempLen) tempLen += SPI_BUFFER_SIZE;
+                        
+                        tempLen %= 3; //bytes over 3 byte alignment
+                        
+                        if (tempLen) tempLen = 3 - tempLen; //check if not 3 byte aligned, then calculate number of padding bytes
+                        
+                        int16 tempLeft = buffSPIRead[iSPIDev] - tempBuffWrite;
+                        if (0 > tempLeft) tempLeft += SPI_BUFFER_SIZE;
+                        
+                        if (tempLeft < (tempLen + 3))
+                        {
+                            readStatusBP = EORERROR;
+                        }
+                        else 
+                        {
+                            if (tempLen)
+                            {
+                                while (tempLen--)
+                                {
+                                    buffSPI[iSPIDev][tempBuffWrite] = 0; //pad 0
+                                    tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
+                                }
+                                buffSPIWrite[iSPIDev] = tempBuffWrite;
+                            }
+    						buffSPIWrite[iSPIDev] = WRAP3INC(buffSPIWrite[iSPIDev], SPI_BUFFER_SIZE);
+    						buffSPI[iSPIDev][tempBuffWrite] = EOR_HEAD;
+    						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
+    						if((SPI_BUFFER_SIZE - 1) == tempBuffWrite) //check for 2 byte wrap
+    						{
+    							buffSPI[iSPIDev][(SPI_BUFFER_SIZE - 1)] = frame00FF[0];
+    							buffSPI[iSPIDev][0] = frame00FF[1];
+//    							tempBuffWrite = 1;
+    						}
+    						else
+    						{
+    							memcpy(&(buffSPI[iSPIDev][tempBuffWrite]), frame00FF, 2); //Copy 0x00FF
+//    							tempBuffWrite += 1; 
+//                                tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE); //this is te locatiion of the last byte
+    						}
+    						
+    						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
+    						packetFIFO[packetFIFOTail].index = iSPIDev;
+    						packetFIFO[packetFIFOTail].EOR = buffSPIWrite[iSPIDev];
+    						packetFIFOTail = WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = buffSPICurHead[iSPIDev];
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = '-';
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = tempBuffWrite;
+    //						buffUsbTxDebug[iBuffUsbTxDebug++] = ']';
+    						
+    						
+    						
+    //						buffSPI[iSPIDev][tempBuffWrite] = 0x00;
+    //						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
+    //						buffSPI[iSPIDev][tempBuffWrite] = 0xFF;
+    //						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
+    //						if (buffSPIRead[iSPIDev] >= tempBuffWrite)
+    //						{
+    //							nBytes = SPI_BUFFER_SIZE - buffSPIRead[iSPIDev];
+    //							memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
+    //							iBuffUsbTx += nBytes;
+    //							buffSPIRead[iSPIDev] = 0;
+    //						}
+    //						nBytes = tempBuffWrite - buffSPIRead[iSPIDev];
+    //						memcpy((buffUsbTx + iBuffUsbTx), &(buffSPI[iSPIDev][buffSPIRead[iSPIDev]]), nBytes);
+    //						iBuffUsbTx += nBytes;
+    //						buffSPIRead[iSPIDev] = tempBuffWrite;
+    						readStatusBP = EORFOUND;
+                        }
 					}
 					 
 				}
