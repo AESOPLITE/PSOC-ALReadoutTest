@@ -1187,6 +1187,7 @@ int main(void)
 //				}
 				if (0u == (0x03u & Control_Reg_CD_Read()))
 				{
+//                    Control_Reg_CD_Write(0u);
 					if (buffSPICurHead[iSPIDev] == buffSPIWrite[iSPIDev]) //TODO this should't be true due to ISR
 					{
 											
@@ -1233,9 +1234,10 @@ int main(void)
                                     buffSPI[iSPIDev][tempBuffWrite] = 0; //pad 0
                                     tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
                                 }
-                                buffSPIWrite[iSPIDev] = tempBuffWrite;
+                                //buffSPIWrite[iSPIDev] = tempBuffWrite;
+//                                tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
                             }
-    						buffSPIWrite[iSPIDev] = WRAP3INC(buffSPIWrite[iSPIDev], SPI_BUFFER_SIZE);
+    						buffSPIWrite[iSPIDev] = WRAP3INC(tempBuffWrite, SPI_BUFFER_SIZE);
     						buffSPI[iSPIDev][tempBuffWrite] = EOR_HEAD;
     						tempBuffWrite = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
     						if((SPI_BUFFER_SIZE - 1) == tempBuffWrite) //check for 2 byte wrap
@@ -1253,7 +1255,7 @@ int main(void)
     						
     						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
     						packetFIFO[packetFIFOTail].index = iSPIDev;
-    						packetFIFO[packetFIFOTail].EOR = buffSPIWrite[iSPIDev];
+    						packetFIFO[packetFIFOTail].EOR = buffSPIWrite[iSPIDev] - 1;
     						packetFIFOTail = WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
     //						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
     //						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
@@ -1312,11 +1314,11 @@ int main(void)
 //				{
 					if (0) //(0u !=(SPIM_BP_STS_RX_FIFO_NOT_EMPTY & SPIM_BP_ReadStatus())) //TODO this shouldnt happen Readout any further bytes
 					{   
-						
-						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
-						buffSPIWrite[iSPIDev] = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
-						buffSPI[iSPIDev][tempBuffWrite] = SPIM_BP_ReadRxData();
-						buffUsbTx[iBuffUsbTx++] = buffSPI[iSPIDev][tempBuffWrite];
+						SPIM_BP_ReadRxData();
+//						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
+//						buffSPIWrite[iSPIDev] = WRAPINC(tempBuffWrite, SPI_BUFFER_SIZE);
+//						buffSPI[iSPIDev][tempBuffWrite] = SPIM_BP_ReadRxData();
+//						buffUsbTx[iBuffUsbTx++] = buffSPI[iSPIDev][tempBuffWrite];
 						
 					}
 					else
