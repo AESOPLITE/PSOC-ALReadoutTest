@@ -68,7 +68,7 @@ uint8 iSPIDev = 0u;
 const uint8 tabSPISel[NUM_SPI_DEV] = {POW_SEL, PHA_SEL, CTR1_SEL, TKR_SEL, CTR3_SEL};
 #define NULL_HEAD	(0xF9u)
 #define POW_HEAD	(0xF6u)
-#define PHA_HEAD	(0xFDu)
+#define PHA_HEAD	(0xF3u)
 #define CTR1_HEAD	(0xF8u)
 #define TKR_HEAD	(0xF4u)
 #define CTR3_HEAD	(0xFAu)
@@ -1255,7 +1255,14 @@ int main(void)
     						
     						packetFIFO[packetFIFOTail].header = buffSPICompleteHead[iSPIDev] = buffSPICurHead[iSPIDev];
     						packetFIFO[packetFIFOTail].index = iSPIDev;
-    						packetFIFO[packetFIFOTail].EOR = buffSPIWrite[iSPIDev] - 1;
+                            if (buffSPIWrite[iSPIDev])
+                            {
+    						    packetFIFO[packetFIFOTail].EOR = buffSPIWrite[iSPIDev] - 1;
+                            }
+                            else
+                            {
+    						    packetFIFO[packetFIFOTail].EOR = SPI_BUFFER_SIZE - 1;
+                            }
     						packetFIFOTail = WRAPINC(packetFIFOTail, PACKET_FIFO_SIZE);
     //						buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
     //						buffUsbTxDebug[iBuffUsbTxDebug++] = iSPIDev;
