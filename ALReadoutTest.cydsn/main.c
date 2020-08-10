@@ -46,7 +46,8 @@
 /* Project Defines */
 #define FALSE  0
 #define TRUE   1
-#define SPI_BUFFER_SIZE  (192u)
+#define SPI_BUFFER_SIZE  (256u)
+typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
 
@@ -77,11 +78,11 @@ const uint8 tabSPISel[NUM_SPI_DEV] = {POW_SEL, PHA_SEL, CTR1_SEL, TKR_SEL, CTR3_
 #define ENDDUMP_HEAD	(0xF7u)
 const uint8 tabSPIHead[NUM_SPI_DEV] = {POW_HEAD, PHA_HEAD, CTR1_HEAD, TKR_HEAD, CTR3_HEAD};
 const uint8 frame00FF[2] = {0x00u, 0xFFu};
-uint8 buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
-uint8 buffSPIRead[NUM_SPI_DEV];
-uint8 buffSPIWrite[NUM_SPI_DEV];
-uint8 buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
-uint8 buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
+SPIBufferIndex buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
+SPIBufferIndex buffSPIRead[NUM_SPI_DEV];
+SPIBufferIndex buffSPIWrite[NUM_SPI_DEV];
+SPIBufferIndex buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
+SPIBufferIndex buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete packet
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
 enum commandStatus {WAIT_DLE, CHECK_ID, CHECK_LEN, READ_CMD, CHECK_ETX_CMD, CHECK_ETX_REQ};
@@ -100,12 +101,12 @@ const uint8 frameSync[2] = {0x55u, 0xABu};
 uint32 frameCnt = 0u;
 
 typedef struct PacketLocation {
-	uint8 index;
-	uint8 header;
-	uint8 EOR;
+	SPIBufferIndex index;
+	SPIBufferIndex header;
+	SPIBufferIndex EOR;
 } PacketLocation;
 
-#define PACKET_FIFO_SIZE	 (4u * NUM_SPI_DEV)
+#define PACKET_FIFO_SIZE	 (16u * NUM_SPI_DEV)
 PacketLocation packetFIFO[PACKET_FIFO_SIZE];
 uint8 packetFIFOHead = 0u;
 uint8 packetFIFOTail = 0u;
@@ -562,7 +563,7 @@ CY_ISR(ISRReadSPI)
 	uint8 intState = CyEnterCriticalSection();
 
 	uint8 tempnDrdy = Pin_nDrdy_Read();
-	uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
+	SPIBufferIndex tempBuffWrite = buffSPIWrite[iSPIDev];
 	uint8 tempStatus = SPIM_BP_ReadStatus();
 	Control_Reg_LoadPulse_Write(0x01);
 	if (tempBuffWrite != buffSPICurHead[iSPIDev]) //Check if buffer is full
@@ -702,8 +703,8 @@ CY_ISR(ISRHRTx)
 		{
 			uint8 curSPIDev = packetFIFO[packetFIFOHead].index;;
 			uint8 nBytes;
-			uint8 curEOR= packetFIFO[packetFIFOHead].EOR;
-			uint8 curRead = buffSPIRead[curSPIDev];
+			SPIBufferIndex curEOR= packetFIFO[packetFIFOHead].EOR;
+			SPIBufferIndex curRead = buffSPIRead[curSPIDev];
 //			buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
 //			buffUsbTxDebug[iBuffUsbTxDebug++] = curSPIDev;
 //			buffUsbTxDebug[iBuffUsbTxDebug++] = '[';
