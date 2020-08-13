@@ -47,7 +47,7 @@
 #define FALSE  0
 #define TRUE   1
 #define SPI_BUFFER_SIZE  (256u)
-typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
+typedef uint16 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
 
@@ -682,7 +682,7 @@ CY_ISR(ISRHRTx)
 			ibuffFrame++;
 		}
 		uint8 nullFrame = FALSE;
-		uint8 nDataBytesLeft = 27;
+		SPIBufferIndex nDataBytesLeft = 27;
 //		memcpy( (buffFrame + ibuffFrame), &(frameCnt), 3);
 //		ibuffFrame += 3;
 		frameCnt++;
@@ -702,7 +702,7 @@ CY_ISR(ISRHRTx)
 		else
 		{
 			uint8 curSPIDev = packetFIFO[packetFIFOHead].index;;
-			uint8 nBytes;
+			SPIBufferIndex nBytes;
 			SPIBufferIndex curEOR= packetFIFO[packetFIFOHead].EOR;
 			SPIBufferIndex curRead = buffSPIRead[curSPIDev];
 //			buffUsbTxDebug[iBuffUsbTxDebug++] = '|';
@@ -1208,7 +1208,7 @@ int main(void)
 					//if ((1u == Pin_nDrdy_Read()) && (0u != (SPIM_BP_STS_SPI_IDLE | SPIM_BP_TX_STATUS_REG)))
 					else
 					{
-						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
+						SPIBufferIndex tempBuffWrite = buffSPIWrite[iSPIDev];
 						int16 tempLen = tempBuffWrite - buffSPICurHead[iSPIDev];
                         
 //						uint8 nBytes;
