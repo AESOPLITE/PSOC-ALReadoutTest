@@ -725,10 +725,13 @@ CY_ISR(ISRHRTx)
 				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev]+curRead, nBytes);
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
-				curRead += nBytes;
+				curRead += (nBytes); //avoiding overflow with - 1 , will add later
+//				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
 				if ((curRead - 1)== curEOR)
+//				if ((curRead)== curEOR)
 				{
-					buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
+//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
+					buffSPIRead[curSPIDev]= curRead; // % SPI_BUFFER_SIZE;
 					packetFIFOHead = WRAPINC(packetFIFOHead, PACKET_FIFO_SIZE);
 					if (packetFIFOHead != packetFIFOTail) 
 					{
@@ -737,12 +740,14 @@ CY_ISR(ISRHRTx)
 						curRead = buffSPIRead[curSPIDev];
 					}
 				}
-				else if (curRead >= SPI_BUFFER_SIZE)
+				else if (curRead >= (SPI_BUFFER_SIZE))
+//				else if (curRead >= (SPI_BUFFER_SIZE - 1))
 				{
 					curRead = buffSPIRead[curSPIDev] = 0;
 				}
 				else
 				{
+//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev] = curRead;
 				}
 			}
