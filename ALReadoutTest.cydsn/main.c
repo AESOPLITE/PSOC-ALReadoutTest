@@ -46,7 +46,7 @@
 /* Project Defines */
 #define FALSE  0
 #define TRUE   1
-#define SPI_BUFFER_SIZE  (224u)
+#define SPI_BUFFER_SIZE  (256u)
 typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
@@ -725,12 +725,12 @@ CY_ISR(ISRHRTx)
 				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev] + curRead, nBytes);
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
-				curRead += (nBytes); //avoiding overflow with - 1 , will add later
-//				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
-				if ((curRead - 1)== curEOR)
-//				if ((curRead)== curEOR)
+//				curRead += (nBytes); //avoiding overflow with - 1 , will add later
+				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
+//				if ((curRead - 1)== curEOR)
+				if ((curRead)== curEOR)
 				{
-//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
 					packetFIFOHead = WRAPINC(packetFIFOHead, PACKET_FIFO_SIZE);
 					if (packetFIFOHead != packetFIFOTail) 
@@ -747,7 +747,7 @@ CY_ISR(ISRHRTx)
 				}
 				else
 				{
-//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev] = curRead;
 				}
 			}
