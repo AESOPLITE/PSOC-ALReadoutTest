@@ -47,7 +47,7 @@
 #define FALSE  0
 #define TRUE   1
 #define SPI_BUFFER_SIZE  (256u)
-typedef uint16 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
+typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
 
@@ -78,7 +78,7 @@ const uint8 tabSPISel[NUM_SPI_DEV] = {POW_SEL, PHA_SEL, CTR1_SEL, TKR_SEL, CTR3_
 #define ENDDUMP_HEAD	(0xF7u)
 const uint8 tabSPIHead[NUM_SPI_DEV] = {POW_HEAD, PHA_HEAD, CTR1_HEAD, TKR_HEAD, CTR3_HEAD};
 const uint8 frame00FF[2] = {0x00u, 0xFFu};
-SPIBufferIndex buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
+uint8 buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
 SPIBufferIndex buffSPIRead[NUM_SPI_DEV];
 SPIBufferIndex buffSPIWrite[NUM_SPI_DEV];
 SPIBufferIndex buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
@@ -726,11 +726,11 @@ CY_ISR(ISRHRTx)
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
 				curRead += (nBytes); //avoiding overflow with - 1 , will add later
-//				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
-				if ((curRead - 1)== curEOR)
-//				if ((curRead)== curEOR)
+				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
+//				if ((curRead - 1)== curEOR)
+				if ((curRead)== curEOR)
 				{
-//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev]= curRead; // % SPI_BUFFER_SIZE;
 					packetFIFOHead = WRAPINC(packetFIFOHead, PACKET_FIFO_SIZE);
 					if (packetFIFOHead != packetFIFOTail) 
@@ -740,14 +740,14 @@ CY_ISR(ISRHRTx)
 						curRead = buffSPIRead[curSPIDev];
 					}
 				}
-				else if (curRead >= (SPI_BUFFER_SIZE))
-//				else if (curRead >= (SPI_BUFFER_SIZE - 1))
+//				else if (curRead >= (SPI_BUFFER_SIZE))
+				else if (curRead >= (SPI_BUFFER_SIZE - 1))
 				{
 					curRead = buffSPIRead[curSPIDev] = 0;
 				}
 				else
 				{
-//                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev] = curRead;
 				}
 			}
