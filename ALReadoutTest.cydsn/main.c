@@ -725,8 +725,8 @@ CY_ISR(ISRHRTx)
 				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev] + curRead, nBytes);
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
-//				curRead += (nBytes); //avoiding overflow with - 1 , will add later
-				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
+				curRead += (nBytes); //avoiding overflow with - 1 , will add later
+//				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
 				if ((curRead - 1)== curEOR)
 //				if ((curRead)== curEOR)
 				{
