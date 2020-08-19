@@ -46,8 +46,8 @@
 /* Project Defines */
 #define FALSE  0
 #define TRUE   1
-#define SPI_BUFFER_SIZE  (256u)
-typedef uint16 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
+#define SPI_BUFFER_SIZE  (224u)
+typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
 
@@ -78,7 +78,7 @@ const uint8 tabSPISel[NUM_SPI_DEV] = {POW_SEL, PHA_SEL, CTR1_SEL, TKR_SEL, CTR3_
 #define ENDDUMP_HEAD	(0xF7u)
 const uint8 tabSPIHead[NUM_SPI_DEV] = {POW_HEAD, PHA_HEAD, CTR1_HEAD, TKR_HEAD, CTR3_HEAD};
 const uint8 frame00FF[2] = {0x00u, 0xFFu};
-SPIBufferIndex buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
+uint8 buffSPI[NUM_SPI_DEV][SPI_BUFFER_SIZE];
 SPIBufferIndex buffSPIRead[NUM_SPI_DEV];
 SPIBufferIndex buffSPIWrite[NUM_SPI_DEV];
 SPIBufferIndex buffSPICurHead[NUM_SPI_DEV]; //Header of the current packet
