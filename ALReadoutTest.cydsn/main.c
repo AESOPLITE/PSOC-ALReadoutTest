@@ -1125,7 +1125,7 @@ int main(void)
 					//if ((0u == Pin_nDrdy_Read()) && (0u != (SPIM_BP_TX_STATUS_REG & SPIM_BP_STS_TX_FIFO_EMPTY)))
 					if ((tempLastDrdyCap - tempCounter) >= MIN_DRDY_CYCLES)
 					{
-						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
+						SPIBufferIndex tempBuffWrite = buffSPIWrite[iSPIDev];
 						Control_Reg_CD_Write(0x03u);
 						Control_Reg_LoadPulse_Write(0x01u);
 						buffSPICurHead[iSPIDev] = buffSPIWrite[iSPIDev];
