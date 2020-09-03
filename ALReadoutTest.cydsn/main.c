@@ -46,8 +46,8 @@
 /* Project Defines */
 #define FALSE  0
 #define TRUE   1
-#define SPI_BUFFER_SIZE  (224u)
-typedef uint8 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
+#define SPI_BUFFER_SIZE  (512u)
+typedef uint16 SPIBufferIndex; //type of variable indexing the SPI buffer. should be uint8 or uint16 based on size
 //uint8 cmdBuff[CMDBUFFSIZE];
 //uint8 iCmdBuff = CMDBUFFSIZE - 1;
 
@@ -716,18 +716,21 @@ CY_ISR(ISRHRTx)
 			{
 				if (curEOR >= curRead)
 				{
-					nBytes = MIN((curEOR + 1) - curRead, nDataBytesLeft);
+					nBytes = MIN(((curEOR - curRead) + 1), nDataBytesLeft);
 				}
 				else
 				{
 					nBytes = MIN(SPI_BUFFER_SIZE - curRead, nDataBytesLeft);
 				}
-				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev]+curRead, nBytes);
+				memcpy( (buffFrame + ibuffFrame), buffSPI[curSPIDev] + curRead, nBytes);
 				ibuffFrame += nBytes;
 				nDataBytesLeft -= nBytes;
-				curRead += nBytes;
-				if ((curRead - 1)== curEOR)
+//				curRead += (nBytes); //avoiding overflow with - 1 , will add later
+				curRead += (nBytes - 1); //avoiding overflow with - 1 , will add later
+//				if ((curRead - 1)== curEOR)
+				if ((curRead)== curEOR)
 				{
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev]= curRead % SPI_BUFFER_SIZE;
 					packetFIFOHead = WRAPINC(packetFIFOHead, PACKET_FIFO_SIZE);
 					if (packetFIFOHead != packetFIFOTail) 
@@ -737,12 +740,14 @@ CY_ISR(ISRHRTx)
 						curRead = buffSPIRead[curSPIDev];
 					}
 				}
-				else if (curRead >= SPI_BUFFER_SIZE)
+//				else if (curRead >= (SPI_BUFFER_SIZE))
+				else if (curRead >= (SPI_BUFFER_SIZE - 1))
 				{
 					curRead = buffSPIRead[curSPIDev] = 0;
 				}
 				else
 				{
+                    curRead = WRAPINC(curRead, SPI_BUFFER_SIZE); //last increment, handling the wrap
 					buffSPIRead[curSPIDev] = curRead;
 				}
 			}
@@ -1120,7 +1125,7 @@ int main(void)
 					//if ((0u == Pin_nDrdy_Read()) && (0u != (SPIM_BP_TX_STATUS_REG & SPIM_BP_STS_TX_FIFO_EMPTY)))
 					if ((tempLastDrdyCap - tempCounter) >= MIN_DRDY_CYCLES)
 					{
-						uint8 tempBuffWrite = buffSPIWrite[iSPIDev];
+						SPIBufferIndex tempBuffWrite = buffSPIWrite[iSPIDev];
 						Control_Reg_CD_Write(0x03u);
 						Control_Reg_LoadPulse_Write(0x01u);
 						buffSPICurHead[iSPIDev] = buffSPIWrite[iSPIDev];
