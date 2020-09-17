@@ -210,9 +210,11 @@ uint8 initCmd[NUMBER_INIT_CMDS][2] = {
 	{0xF8, 0x38}, //T1 T2 T3 Coincidence
 	{0x0A, 0xB7}, //10sec counter R/O
 	{0x0A, 0xB6} }; //10sec Power R/O
-uint8 buffCmd[NUMBER_INIT_CMDS][2];
-uint8 readBuffCmd = 0;
-uint8 writeBuffCmd = 0;
+#define CMD_BUFFER_SIZE (NUMBER_INIT_CMDS + NUMBER_INIT_CMDS)
+uint8 buffCmd[COMMAND_SOURCES][CMD_BUFFER_SIZE][2];
+uint8 readBuffCmd[COMMAND_SOURCES];// = 0;
+uint8 writeBuffCmd[COMMAND_SOURCES];// = 0;
+uint8 orderBuffCmd[COMMAND_SOURCES];
 
 typedef struct BaroCoeff {
 	const double U0;
@@ -393,7 +395,8 @@ int CheckCmdDma(uint8 chanSrc)
                             tempRes = SendCmdString(curCmd);  
                             if (-EBUSY == tempRes)
                             {
-                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[chanSrc], 2); //busy queue for later
+                                memcpy(buffCmd[chanSrc][writeBuffCmd[chanSrc]], cmdRxC[chanSrc], 2); //busy queue for later
+                                writeBuffCmd[chanSrc] = WRAPINC(writeBuffCmd[chanSrc], CMD_BUFFER_SIZE);
                             }
                             else if (tempRes < 0)
                             {
@@ -411,6 +414,24 @@ int CheckCmdDma(uint8 chanSrc)
                 
         }
     }
+}
+
+int CheckCmdBuffers()
+{
+    if (0 != UART_Cmd_GetTxBufferSize()) return -EBUSY; // Not ready to send
+    uint8 curChan;
+    for (uint8 i = 0; i < COMMAND_SOURCES; i++) 
+    {
+        curChan = orderBuffCmd[i];
+        if (readBuffCmd[curChan] != writeBuffCmd[curChan]) // check if q has cmd
+        {
+            int tempRes = CmdBytes2String(buffCmd[curChan][readBuffCmd[curChan]], curCmd);
+            tempRes = SendCmdString(curCmd);
+            readBuffCmd[curChan] = WRAPINC(readBuffCmd[curChan], CMD_BUFFER_SIZE);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 CY_ISR(ISRCheckCmd)
@@ -463,7 +484,8 @@ CY_ISR(ISRCheckCmd)
                             tempRes = SendCmdString(curCmd);  
                             if (-EBUSY == tempRes)
                             {
-                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[i], 2); //busy queue for later
+                                memcpy(buffCmd[i][writeBuffCmd[i]], cmdRxC[i], 2); //busy queue for later
+                                writeBuffCmd[i] = WRAPINC(writeBuffCmd[i], CMD_BUFFER_SIZE);
                             }
                             else if (tempRes < 0)
                             {
@@ -525,7 +547,8 @@ CY_ISR(ISRCheckCmd)
                             tempRes = SendCmdString(curCmd);  
                             if (-EBUSY == tempRes)
                             {
-                                memcpy(buffCmd[writeBuffCmd++], cmdRxC[i], 2); //busy queue for later
+                                memcpy(buffCmd[i][writeBuffCmd[i]], cmdRxC[i], 2); //busy queue for later
+                                writeBuffCmd[i] = WRAPINC(writeBuffCmd[i], CMD_BUFFER_SIZE);
                             }
                             else if (tempRes < 0)
                             {
@@ -892,6 +915,17 @@ int main(void)
 	memset(curBaroPresCnt, 0, NUM_BARO);
     memset(commandStatusC, WAIT_DLE, COMMAND_SOURCES);
     memset(buffCmdRxCRead, 0, COMMAND_SOURCES);
+    memset(readBuffCmd, 0, COMMAND_SOURCES);
+    memset(writeBuffCmd, 0, COMMAND_SOURCES);
+    
+    for (uint8 i = 0; i < COMMAND_SOURCES; i++)
+    {
+        orderBuffCmd[i] = i; //read the cmd buff in order
+    }
+    memcpy(&buffCmd[0][0][0], initCmd, (NUMBER_INIT_CMDS * 2));
+    writeBuffCmd[0] = NUMBER_INIT_CMDS;
+    memcpy(&buffCmd[1][0][0], initCmd, (NUMBER_INIT_CMDS * 2));
+    writeBuffCmd[1] = NUMBER_INIT_CMDS;
     
 //	buffUsbTx[3] = 0x55;
 //	buffUsbTx[4] = 0xAA;
@@ -965,7 +999,7 @@ int main(void)
 //	ISRHRTx();
 	isr_HR_StartEx(ISRHRTx);
 	
-	SendInitCmds();
+//	SendInitCmds();
 	isr_B_StartEx(ISRBaroCap);
     
     
@@ -973,6 +1007,7 @@ int main(void)
 	{
 		
 		/* Place your application code here. */
+        int tempRes = CheckCmdBuffers();
 		//if (SPIM_BP_GetRxBufferSize > 0)
 		//{
 //			SPIM_BP_ReadRxData();
