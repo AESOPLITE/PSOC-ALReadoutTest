@@ -40,7 +40,8 @@
 #define DLE	(0x10u) //Data Link Escape Used as low rate packet header
 #define ETX	(0x03u) //Data Link Escape Used as low rate packet trailer
 #define CMD_ID	(0x14u) //ID byte for command in low rate packet
-#define REQ_ID	(0x13u) //ID byte for rfequest scince data in low rate packet
+#define REQ_ID	(0x13u) //ID byte for request science data in low rate packet
+#define SDATA_ID	(0x53u) //ID byte for science data in low rate packet
 #define FILLBYTE (0xA3u) //SPI never transmits  so could be anything
 //#define CMDBUFFSIZE 3
 /* Project Defines */
@@ -341,6 +342,18 @@ void SendInitCmds()
 	}
 }
 
+int SendLRScienceData()
+{
+    //TODO collect the subset of data 
+    buffUsbTx[iBuffUsbTx++] = DLE;
+    buffUsbTx[iBuffUsbTx++] = SDATA_ID;
+    buffUsbTx[iBuffUsbTx++] = 1;
+    buffUsbTx[iBuffUsbTx++] = 0;
+    buffUsbTx[iBuffUsbTx++] = ETX;
+    
+    return 1;
+}
+
 int CheckCmdDma(uint8 chanSrc)
 {
    
@@ -367,6 +380,7 @@ int CheckCmdDma(uint8 chanSrc)
                     break;
                 case CHECK_ID:
                     if (CMD_ID == tempRx) commandStatusC[chanSrc] = CHECK_LEN;
+                    if (REQ_ID == tempRx) commandStatusC[chanSrc] = CHECK_ETX_REQ;
                     break;
                 case CHECK_LEN:
                     if(2 == tempRx){
@@ -410,10 +424,17 @@ int CheckCmdDma(uint8 chanSrc)
                     }
                     commandStatusC[chanSrc] = WAIT_DLE;
                     break;
+                case CHECK_ETX_REQ:
+                    if (ETX == tempRx)
+                    {    
+                        SendLRScienceData();
+                    }
+                    break;
             }
                 
         }
     }
+    return 0;
 }
 
 int CheckCmdBuffers()
@@ -433,6 +454,8 @@ int CheckCmdBuffers()
     }
     return 0;
 }
+
+
 
 CY_ISR(ISRCheckCmd)
 {
@@ -456,6 +479,7 @@ CY_ISR(ISRCheckCmd)
                     break;
                 case CHECK_ID:
                     if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
+                    else if (REQ_ID == tempRx) commandStatusC[i] = CHECK_ETX_REQ;
                     break;
                 case CHECK_LEN:
                     if(2 == tempRx){
@@ -492,6 +516,17 @@ CY_ISR(ISRCheckCmd)
                                 //TODO Error handling
                             }
                         }
+                    }
+                    else 
+                    {
+                        //TODO error
+                    }
+                    commandStatusC[i] = WAIT_DLE;
+                    break;
+                case CHECK_ETX_REQ:
+                    if (ETX == tempRx)
+                    {
+                        SendLRScienceData();
                     }
                     else 
                     {
@@ -1053,10 +1088,14 @@ int main(void)
 		{
             UART_LR_Data_PutArray(buffUsbRx, 6);
 //            buffUsbTxDebug[iBuffUsbTxDebug++] = '^'; //Debug
-            buffUsbTxDebug[iBuffUsbTxDebug++] = CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u] & 15; //Debug
+//            buffUsbTxDebug[iBuffUsbTxDebug++] = CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u] & 15; //Debug
             
 //            memcpy(buffUsbTxDebug + iBuffUsbTxDebug, buffCmdRxC, 16);
 //            iBuffUsbTxDebug +=16; //debug
+        }
+        else //debug
+        {
+            UART_LR_Data_PutArray(buffUsbRx, nBuffUsbRx);
         }
         iBuffUsbRx = 0;
         nBuffUsbRx = 0;
