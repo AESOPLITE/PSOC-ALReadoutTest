@@ -87,7 +87,7 @@ SPIBufferIndex buffSPICompleteHead[NUM_SPI_DEV]; //Header of the latest complete
 
 enum readStatus {CHECKDATA, READOUTDATA, EORFOUND, EORERROR};
 enum commandStatus {WAIT_DLE, CHECK_ID, CHECK_LEN, READ_CMD, CHECK_ETX_CMD, CHECK_ETX_REQ};
-#define COMMAND_SOURCES 2
+#define COMMAND_SOURCES 3
 enum commandStatus commandStatusC[COMMAND_SOURCES];
 uint8 commandLenC[COMMAND_SOURCES];
 uint8 cmdRxC[COMMAND_SOURCES][2];
@@ -1046,18 +1046,27 @@ int main(void)
 
 			}
 		}
-		if ((6 == nBuffUsbRx) && (DLE == buffUsbRx[0])) //debug 
-		{
-            UART_LR_Data_PutArray(buffUsbRx, 6);
-//            buffUsbTxDebug[iBuffUsbTxDebug++] = '^'; //Debug
-//            buffUsbTxDebug[iBuffUsbTxDebug++] = CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u] & 15; //Debug
-            
-//            memcpy(buffUsbTxDebug + iBuffUsbTxDebug, buffCmdRxC, 16);
-//            iBuffUsbTxDebug +=16; //debug
-        }
-        else //debug
+//		if ((6 == nBuffUsbRx) && (DLE == buffUsbRx[0])) //debug 
+//		{
+//            UART_LR_Data_PutArray(buffUsbRx, 6);
+////            buffUsbTxDebug[iBuffUsbTxDebug++] = '^'; //Debug
+////            buffUsbTxDebug[iBuffUsbTxDebug++] = CY_DMA_TDMEM_STRUCT_PTR[0].TD1[2u] & 15; //Debug
+//            
+////            memcpy(buffUsbTxDebug + iBuffUsbTxDebug, buffCmdRxC, 16);
+////            iBuffUsbTxDebug +=16; //debug
+//        }
+//        else //debug
+//        {
+//            UART_LR_Data_PutArray(buffUsbRx, nBuffUsbRx);
+//        }
+        
+        for(uint8 x = 0; x < nBuffUsbRx; x++)
         {
-            UART_LR_Data_PutArray(buffUsbRx, nBuffUsbRx);
+            tempRes = ParseCmdInputByte(buffUsbRx[x], (COMMAND_SOURCES - 1));
+            if (0 > tempRes)
+            {
+                //TODO error handling
+            }
         }
         iBuffUsbRx = 0;
         nBuffUsbRx = 0;
