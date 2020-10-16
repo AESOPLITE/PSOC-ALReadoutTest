@@ -354,6 +354,74 @@ int SendLRScienceData()
     return 1;
 }
 
+int ParseCmdInputByte(uint8 tempRx, uint8 i)
+{
+    switch(commandStatusC[i])
+    {
+        case WAIT_DLE:
+            if (DLE == tempRx) commandStatusC[i] = CHECK_ID;
+            break;
+        case CHECK_ID:
+            if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
+            else if (REQ_ID == tempRx) commandStatusC[i] = CHECK_ETX_REQ;
+            break;
+        case CHECK_LEN:
+            if(2 == tempRx){
+                commandLenC[i] = tempRx;
+                commandStatusC[i] = READ_CMD;
+            }
+            else commandStatusC[i] = WAIT_DLE;
+            break;
+        case READ_CMD:
+            if(commandLenC[i] > 0)
+            {
+                cmdRxC[i][commandLenC[i] % 2] = tempRx;
+                commandLenC[i]--;
+//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[i]; //debug
+                if(0 == commandLenC[i])  commandStatusC[i]= CHECK_ETX_CMD;
+            }
+            
+            break;
+        case CHECK_ETX_CMD:
+            if (ETX == tempRx)
+            {
+                
+                int tempRes = CmdBytes2String(cmdRxC[i], curCmd);
+                if(tempRes >= 0)
+                {
+                    tempRes = SendCmdString(curCmd);  
+                    if (-EBUSY == tempRes)
+                    {
+                        memcpy(buffCmd[i][writeBuffCmd[i]], cmdRxC[i], 2); //busy queue for later
+                        writeBuffCmd[i] = WRAPINC(writeBuffCmd[i], CMD_BUFFER_SIZE);
+                    }
+                    else if (tempRes < 0)
+                    {
+                        //TODO Error handling
+                    }
+                }
+            }
+            else 
+            {
+                //TODO error
+            }
+            commandStatusC[i] = WAIT_DLE;
+            break;
+        case CHECK_ETX_REQ:
+            if (ETX == tempRx)
+            {
+                SendLRScienceData();
+            }
+            else 
+            {
+                //TODO error
+            }
+            commandStatusC[i] = WAIT_DLE;
+            break;
+    }
+    return 0;
+}
+
 int CheckCmdDma(uint8 chanSrc)
 {
    
@@ -470,71 +538,12 @@ CY_ISR(ISRCheckCmd)
         
         while(UART_LR_Cmd_1_GetRxBufferSize())   
         {
-            tempRx = UART_LR_Cmd_1_ReadRxData();  
-//            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
-            switch(commandStatusC[i])
+            int tempRes = ParseCmdInputByte(UART_LR_Cmd_1_ReadRxData(), i);
+            if (0 > tempRes)
             {
-                case WAIT_DLE:
-                    if (DLE == tempRx) commandStatusC[i] = CHECK_ID;
-                    break;
-                case CHECK_ID:
-                    if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
-                    else if (REQ_ID == tempRx) commandStatusC[i] = CHECK_ETX_REQ;
-                    break;
-                case CHECK_LEN:
-                    if(2 == tempRx){
-                        commandLenC[i] = tempRx;
-                        commandStatusC[i] = READ_CMD;
-                    }
-                    else commandStatusC[i] = WAIT_DLE;
-                    break;
-                case READ_CMD:
-                    if(commandLenC[i] > 0)
-                    {
-                        cmdRxC[i][commandLenC[i] % 2] = tempRx;
-                        commandLenC[i]--;
-//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[i]; //debug
-                        if(0 == commandLenC[i])  commandStatusC[i]= CHECK_ETX_CMD;
-                    }
-                    
-                    break;
-                case CHECK_ETX_CMD:
-                    if (ETX == tempRx)
-                    {
-                        
-                        int tempRes = CmdBytes2String(cmdRxC[i], curCmd);
-                        if(tempRes >= 0)
-                        {
-                            tempRes = SendCmdString(curCmd);  
-                            if (-EBUSY == tempRes)
-                            {
-                                memcpy(buffCmd[i][writeBuffCmd[i]], cmdRxC[i], 2); //busy queue for later
-                                writeBuffCmd[i] = WRAPINC(writeBuffCmd[i], CMD_BUFFER_SIZE);
-                            }
-                            else if (tempRes < 0)
-                            {
-                                //TODO Error handling
-                            }
-                        }
-                    }
-                    else 
-                    {
-                        //TODO error
-                    }
-                    commandStatusC[i] = WAIT_DLE;
-                    break;
-                case CHECK_ETX_REQ:
-                    if (ETX == tempRx)
-                    {
-                        SendLRScienceData();
-                    }
-                    else 
-                    {
-                        //TODO error
-                    }
-                    commandStatusC[i] = WAIT_DLE;
-                    break;
+                //TODO error handling
             }
+            
                 
         }
     }
@@ -545,59 +554,12 @@ CY_ISR(ISRCheckCmd)
         
         while(UART_LR_Cmd_2_GetRxBufferSize())   
         {
-            tempRx = UART_LR_Cmd_2_ReadRxData();  
-//            buffUsbTxDebug[iBuffUsbTxDebug++] = tempRx; //debug
-            switch(commandStatusC[i])
+            int tempRes = ParseCmdInputByte(UART_LR_Cmd_2_ReadRxData(), i);
+            if (0 > tempRes)
             {
-                case WAIT_DLE:
-                    if (DLE == tempRx) commandStatusC[i] = CHECK_ID;
-                    break;
-                case CHECK_ID:
-                    if (CMD_ID == tempRx) commandStatusC[i] = CHECK_LEN;
-                    break;
-                case CHECK_LEN:
-                    if(2 == tempRx){
-                        commandLenC[i] = tempRx;
-                        commandStatusC[i] = READ_CMD;
-                    }
-                    else commandStatusC[i] = WAIT_DLE;
-                    break;
-                case READ_CMD:
-                    if(commandLenC[i] > 0)
-                    {
-                        cmdRxC[i][commandLenC[i] % 2] = tempRx;
-                        commandLenC[i]--;
-//                        buffUsbTxDebug[iBuffUsbTxDebug++] = commandLenC[i]; //debug
-                        if(0 == commandLenC[i])  commandStatusC[i]= CHECK_ETX_CMD;
-                    }
-                    
-                    break;
-                case CHECK_ETX_CMD:
-                    if (ETX == tempRx)
-                    {
-                        
-                        int tempRes = CmdBytes2String(cmdRxC[i], curCmd);
-                        if(tempRes >= 0)
-                        {
-                            tempRes = SendCmdString(curCmd);  
-                            if (-EBUSY == tempRes)
-                            {
-                                memcpy(buffCmd[i][writeBuffCmd[i]], cmdRxC[i], 2); //busy queue for later
-                                writeBuffCmd[i] = WRAPINC(writeBuffCmd[i], CMD_BUFFER_SIZE);
-                            }
-                            else if (tempRes < 0)
-                            {
-                                //TODO Error handling
-                            }
-                        }
-                    }
-                    else 
-                    {
-                        //TODO error
-                    }
-                    commandStatusC[i] = WAIT_DLE;
-                    break;
+                //TODO error handling
             }
+            
                 
         }
     
